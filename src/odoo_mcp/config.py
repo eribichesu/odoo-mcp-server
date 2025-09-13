@@ -2,14 +2,14 @@
 Configuration management for the Odoo MCP server.
 """
 
+from pathlib import Path
 from typing import Optional
-from pydantic import Field
-from pydantic_settings import BaseSettings
-
-from typing import Optional
-
 from pydantic import Field, HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Get the project root directory (two levels up from this file)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 
 class OdooSettings(BaseSettings):
@@ -17,7 +17,7 @@ class OdooSettings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="ODOO_",
-        env_file=".env",
+        env_file=str(ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     """Main application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
