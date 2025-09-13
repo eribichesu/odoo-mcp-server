@@ -16,17 +16,6 @@ def mock_odoo_client():
     return client
 
 
-@pytest.fixture
-def sample_settings():
-    """Create sample settings for testing."""
-    return Settings(
-        odoo_url="https://test.odoo.com",
-        odoo_database="test_db",
-        odoo_username="test_user",
-        odoo_password="test_password",
-    )
-
-
 @pytest.mark.asyncio
 async def test_search_records_tool_success(mock_odoo_client):
     """Test successful record search."""
@@ -99,13 +88,20 @@ async def test_create_record_tool_error(mock_odoo_client):
     assert result["error_type"] == "OdooError"
 
 
-def test_settings_validation(sample_settings):
+def test_settings_validation():
     """Test that settings are properly validated."""
-    assert sample_settings.odoo_url == "https://test.odoo.com"
-    assert sample_settings.odoo_database == "test_db"
-    assert sample_settings.odoo_username == "test_user"
-    assert sample_settings.odoo_password == "test_password"
-    assert sample_settings.server_name == "odoo-mcp"
+    settings = Settings(
+        odoo_url="https://test.odoo.com",
+        odoo_database="test_db",
+        odoo_username="test_user",
+        odoo_password="test_password",
+    )
+    
+    assert settings.odoo_url == "https://test.odoo.com"
+    assert settings.odoo_database == "test_db"
+    assert settings.odoo_username == "test_user"
+    assert settings.odoo_password == "test_password"
+    assert settings.server_name == "odoo-mcp"
 
 
 def test_settings_from_env(monkeypatch):

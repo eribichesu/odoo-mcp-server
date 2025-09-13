@@ -58,6 +58,9 @@ class OdooClient:
         self.database = settings.odoo_database
         self.username = settings.odoo_username
         self.password = settings.odoo_password
+        self.timeout = settings.odoo_timeout
+        self.max_retries = settings.odoo_max_retries
+        self.retry_delay = settings.odoo_retry_delay
 
     async def authenticate(self) -> int:
         """

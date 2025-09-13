@@ -96,10 +96,56 @@ class Settings(BaseSettings):
         description="Logging level",
     )
 
-    # Odoo configuration
-    odoo: OdooSettings = Field(
-        default_factory=OdooSettings,
-        description="Odoo configuration",
+    # Odoo connection settings
+    odoo_url: str = Field(
+        ...,  # Required
+        description="Odoo instance URL (e.g., https://mycompany.odoo.com)",
+    )
+    odoo_database: str = Field(
+        ...,  # Required
+        description="Odoo database name",
+    )
+    odoo_username: str = Field(
+        ...,  # Required
+        description="Odoo username or email",
+    )
+    odoo_password: str = Field(
+        ...,  # Required
+        description="Odoo password or API key",
+    )
+
+    # Optional Odoo settings
+    odoo_timeout: int = Field(
+        default=30,
+        description="Request timeout in seconds",
+    )
+    odoo_max_retries: int = Field(
+        default=3,
+        description="Maximum number of retries for failed requests",
+    )
+    odoo_retry_delay: float = Field(
+        default=1.0,
+        description="Delay between retries in seconds",
+    )
+
+    # MCP server settings
+    server_name: str = Field(
+        default="odoo-mcp",
+        description="MCP server name",
+    )
+    server_version: str = Field(
+        default="0.1.0",
+        description="MCP server version",
+    )
+
+    # Default limits for operations
+    default_limit: int = Field(
+        default=100,
+        description="Default limit for search operations",
+    )
+    max_limit: int = Field(
+        default=1000,
+        description="Maximum limit for search operations",
     )
 
 
