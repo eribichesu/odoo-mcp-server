@@ -61,6 +61,8 @@ class OdooClient:
         self.timeout = settings.odoo_timeout
         self.max_retries = settings.odoo_max_retries
         self.retry_delay = settings.odoo_retry_delay
+        self.default_limit = settings.default_limit
+        self.max_limit = settings.max_limit
 
     async def authenticate(self) -> int:
         """
@@ -76,7 +78,12 @@ class OdooClient:
         try:
             # Create common client for authentication
             common_url = f"{self.url}/xmlrpc/2/common"
-            self._common = xmlrpc.client.ServerProxy(common_url, timeout=self.timeout)
+            try:
+                # Try with timeout parameter first
+                self._common = xmlrpc.client.ServerProxy(common_url, timeout=self.timeout)
+            except TypeError:
+                # Fallback without timeout for older Python versions
+                self._common = xmlrpc.client.ServerProxy(common_url)
             
             # Authenticate and get user ID
             self.uid = await self._run_in_executor(
@@ -94,7 +101,12 @@ class OdooClient:
             
             # Create models client
             models_url = f"{self.url}/xmlrpc/2/object"
-            self._models = xmlrpc.client.ServerProxy(models_url, timeout=self.timeout)
+            try:
+                # Try with timeout parameter first
+                self._models = xmlrpc.client.ServerProxy(models_url, timeout=self.timeout)
+            except TypeError:
+                # Fallback without timeout for older Python versions
+                self._models = xmlrpc.client.ServerProxy(models_url)
             
             self._authenticated = True
             logger.info(f"Successfully authenticated with Odoo as user {self.uid}")
@@ -116,7 +128,12 @@ class OdooClient:
         try:
             if not self._common:
                 common_url = f"{self.url}/xmlrpc/2/common"
-                self._common = xmlrpc.client.ServerProxy(common_url, timeout=self.timeout)
+                try:
+                    # Try with timeout parameter first
+                    self._common = xmlrpc.client.ServerProxy(common_url, timeout=self.timeout)
+                except TypeError:
+                    # Fallback without timeout for older Python versions
+                    self._common = xmlrpc.client.ServerProxy(common_url)
             
             version_info = await self._run_in_executor(self._common.version)
             return {
@@ -162,9 +179,9 @@ class OdooClient:
             domain = []
         
         if limit is None:
-            limit = self.settings.default_limit
-        elif limit > self.settings.max_limit:
-            limit = self.settings.max_limit
+            limit = self.default_limit
+        elif limit > self.max_limit:
+            limit = self.max_limit
         
         try:
             # Search for record IDs
