@@ -14,21 +14,40 @@ app = FastMCP(settings.server_name)n for Odoo integration.
 import asyncio
 import json
 import logging
+import sys
+import os
 from typing import Any, Dict, List, Optional, Sequence
+
+# Add the parent directory to sys.path to handle relative imports
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent, Tool
 
-from .client import OdooClient, OdooError
-from .config import get_settings
-from .tools import (
-    create_record_tool,
-    delete_record_tool,
-    get_model_fields_tool,
-    search_records_tool,
-    update_record_tool,
-    call_method_tool,
-)
+try:
+    from .client import OdooClient, OdooError
+    from .config import get_settings
+    from .tools import (
+        create_record_tool,
+        delete_record_tool,
+        get_model_fields_tool,
+        search_records_tool,
+        update_record_tool,
+        call_method_tool,
+    )
+except ImportError:
+    # Fallback for direct execution
+    from odoo_mcp.client import OdooClient, OdooError
+    from odoo_mcp.config import get_settings
+    from odoo_mcp.tools import (
+        create_record_tool,
+        delete_record_tool,
+        get_model_fields_tool,
+        search_records_tool,
+        update_record_tool,
+        call_method_tool,
+    )
 
 
 # Configure logging

@@ -9,7 +9,7 @@
       }
     },
     "odoo": {
-      "command": "python",
+      "command": "/Users/edoardo.ribichesu/vscode/odoo.mcp/.venv/bin/python",
       "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
       "env": {
         "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
