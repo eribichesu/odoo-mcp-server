@@ -63,6 +63,12 @@ class OdooClient:
         self.retry_delay = settings.odoo_retry_delay
         self.default_limit = settings.default_limit
         self.max_limit = settings.max_limit
+        
+        # Initialize connection state
+        self._common = None
+        self._models = None
+        self._authenticated = False
+        self.uid = None
 
     async def authenticate(self) -> int:
         """
@@ -126,7 +132,7 @@ class OdooClient:
             Dictionary with server information
         """
         try:
-            if not self._common:
+            if not hasattr(self, '_common') or not self._common:
                 common_url = f"{self.url}/xmlrpc/2/common"
                 try:
                     # Try with timeout parameter first
