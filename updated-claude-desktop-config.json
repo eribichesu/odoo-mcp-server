@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "hubspot": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/Users/edoardo.ribichesu/vscode/hubspot.mcp/dist/index.js"],
+      "cwd": "/Users/edoardo.ribichesu/vscode/hubspot.mcp",
+      "env": {
+        "HUBSPOT_ACCESS_TOKEN": "CJrG4KeUMxIgQlNQMl8kQEwrAhMACAkCFBwBAgEQAwoBAgMHGygCeAEYreixFyDMxcQkKO7pDDIU-T-y_2ou-wm60HojtUjsNqYQqeA6WEJTUDJfJEBMKwImABATBgAGAHEAKwBIAAEAAQABAAgAAQAGAAIAFAAEABgABAABAAEAAQABAAEABAABAAUAAQASAAkAAwABADEAAQBXABcAAQBCAFQBAQBCFFUXJ0VcIjPOKzeIifhfWiXC3es_SgNldTFSAFoAYAFozMXEJHAAeAA"
+      }
+    },
+    "odoo": {
+      "command": "python",
+      "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
+      "env": {
+        "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
+      }
+    }
+  }
+}
