@@ -11,6 +11,7 @@
     "odoo": {
       "command": "/Users/edoardo.ribichesu/vscode/odoo.mcp/.venv/bin/python",
       "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
+      "cwd": "/Users/edoardo.ribichesu/vscode/odoo.mcp",
       "env": {
         "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
       }
