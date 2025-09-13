@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "odoo": {
+      "command": "python",
+      "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
+      "env": {
+        "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
+      }
+    }
+  }
+}
