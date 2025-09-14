@@ -1,8 +1,42 @@
 # ChatGPT Desktop - Odoo MCP Server Configuration
 
-## 🔌 Configuring Odoo MCP Server for ChatGPT Desktop
+## ⚠️ Important Notice
 
-ChatGPT Desktop supports MCP servers through extension configuration. Here's how to set up your Odoo MCP server.
+**ChatGPT Desktop currently supports MCP integration through remote connections only**
+
+According to the [official MCP client documentation](https://modelcontextprotocol.io/clients), ChatGPT Desktop supports:
+- ✅ **Tools** (via remote MCP servers)
+- ❌ Resources, Prompts, Sampling, Roots, Notifications (not supported)
+
+**This means local MCP servers (like our Odoo MCP server) cannot be directly configured in ChatGPT Desktop.**
+
+## 🔌 Alternative Integration Options
+
+Since ChatGPT Desktop only supports remote MCP servers, here are your options:
+
+### Option 1: Deploy as Remote MCP Server
+
+To use your Odoo MCP server with ChatGPT Desktop, you need to deploy it as a remote server accessible over HTTP/SSE (Server-Sent Events).
+
+**Currently, this requires additional implementation work** as your local server needs to be converted to support SSE transport.
+
+### Option 2: Use Alternative MCP Clients
+
+Instead of ChatGPT Desktop, consider these MCP clients that support local servers:
+
+- **Claude Desktop App** - Full local MCP support (resources, prompts, tools)
+- **VS Code GitHub Copilot** - Full MCP support with stdio and SSE
+- **Continue** (VS Code extension) - Built-in MCP support for all features
+- **Cursor** - AI code editor with MCP tools support
+- **LM Studio** - Local models with MCP integration
+
+### Option 3: Future ChatGPT Desktop Integration
+
+Monitor the [MCP client documentation](https://modelcontextprotocol.io/clients) for updates on ChatGPT Desktop's local server support.
+
+## 📚 What Was Originally Configured
+
+The files created in this guide were based on the assumption that ChatGPT Desktop supported local MCP servers like Claude Desktop does. While these files are not usable with ChatGPT Desktop, they can serve as templates for:
 
 ### 📋 Configuration Options
 
@@ -123,64 +157,22 @@ from typing import Dict, Any
 
 class ChatGPTOdooBridge:
     def __init__(self):
-        self.mcp_server_path = "/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"
-        self.python_path = "/Users/edoardo.ribichesu/vscode/odoo.mcp/.venv/bin/python"
-        self.working_dir = "/Users/edoardo.ribichesu/vscode/odoo.mcp"
-    
-    async def call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call an MCP tool and return the result."""
-        # Implementation would depend on ChatGPT Desktop's extension API
-        pass
-    
-    def get_available_tools(self) -> list:
-        """Return list of available Odoo MCP tools."""
-        return [
-            "check_odoo_connection",
-            "search_odoo_records", 
-            "create_odoo_record",
-            "update_odoo_record",
-            "delete_odoo_record",
-            "get_odoo_model_fields"
-        ]
+## 📋 Summary
 
-# Extension registration (format depends on ChatGPT Desktop)
-def register_extension():
-    return ChatGPTOdooBridge()
-```
+Based on the current MCP client support matrix:
 
-### 📱 ChatGPT Desktop Specific Steps
+- **ChatGPT Desktop**: Only supports remote MCP servers (not local ones like ours)
+- **Recommended alternatives**: Claude Desktop, VS Code Copilot, Continue, Cursor, or LM Studio
+- **Future possibility**: ChatGPT Desktop may add local server support in the future
 
-Since ChatGPT Desktop's MCP integration may vary, here are the general steps:
+## 🚀 Next Steps
 
-1. **Check Documentation**: Look for ChatGPT Desktop's official MCP/extension documentation
-2. **Configuration Location**: Find where ChatGPT Desktop stores extension configs
-3. **Format Requirements**: Determine the exact JSON format required
-4. **Installation Method**: Some may require placing files in specific directories
+1. **For immediate use**: Set up your Odoo MCP server with Claude Desktop or VS Code Copilot
+2. **For ChatGPT integration**: Wait for remote server support or deploy to a remote server
+3. **Keep monitoring**: Check the [MCP clients page](https://modelcontextprotocol.io/clients) for updates
 
-### 🔍 Troubleshooting
+## 📞 Need Help?
 
-**Issue:** ChatGPT Desktop doesn't recognize the MCP server
-**Solution:** 
-- Check the configuration file location
-- Verify the JSON format matches ChatGPT Desktop's requirements
-- Ensure Python path and working directory are correct
+If you'd like to use your Odoo MCP server with a supported client or need help deploying it as a remote server, let me know!
 
-**Issue:** "Permission denied" errors
-**Solution:**
-```bash
-chmod +x /Users/edoardo.ribichesu/vscode/odoo.mcp/.venv/bin/python
-```
-
-**Issue:** Environment variables not loading
-**Solution:** Verify the `cwd` is set to the project root where `.env` file exists
-
-### 📞 Need Help?
-
-If you need specific guidance for your ChatGPT Desktop version, please share:
-1. ChatGPT Desktop version
-2. Available extension/MCP configuration options in settings
-3. Any error messages you encounter
-
----
-
-**Your Odoo MCP server is ready - just need to configure ChatGPT Desktop to connect to it!**
+Your Odoo MCP server is ready and can be used with any MCP client that supports local servers.
