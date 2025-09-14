@@ -1,0 +1,58 @@
+{
+  "name": "Odoo MCP Server",
+  "version": "1.0.0",
+  "description": "MCP server for Odoo integration - CRUD operations, model introspection, and reporting",
+  "author": "Edoardo Ribichesu",
+  "homepage": "https://github.com/eribichesu/odoo-mcp-server",
+  "mcp": {
+    "server": {
+      "command": "/Users/edoardo.ribichesu/vscode/odoo.mcp/.venv/bin/python",
+      "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
+      "cwd": "/Users/edoardo.ribichesu/vscode/odoo.mcp",
+      "env": {
+        "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
+      }
+    },
+    "tools": [
+      {
+        "name": "check_odoo_connection",
+        "description": "Check connection to Odoo server and return status information"
+      },
+      {
+        "name": "search_odoo_records",
+        "description": "Search for records in Odoo models with filtering, sorting, and field selection"
+      },
+      {
+        "name": "create_odoo_record",
+        "description": "Create new records in Odoo models"
+      },
+      {
+        "name": "update_odoo_record",
+        "description": "Update existing records in Odoo models"
+      },
+      {
+        "name": "delete_odoo_record",
+        "description": "Delete records from Odoo models"
+      },
+      {
+        "name": "get_odoo_model_fields",
+        "description": "Get field definitions and schema information for Odoo models"
+      }
+    ]
+  },
+  "capabilities": [
+    "odoo-integration",
+    "crm-operations", 
+    "data-management",
+    "model-introspection"
+  ],
+  "requirements": {
+    "python": ">=3.8",
+    "packages": [
+      "mcp>=1.2.0",
+      "pydantic>=2.0.0",
+      "pydantic-settings>=2.0.0",
+      "requests>=2.25.0"
+    ]
+  }
+}
