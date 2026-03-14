@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 import os
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 # Add the parent directory to sys.path to handle relative imports
 if __name__ == "__main__":
@@ -100,43 +100,49 @@ async def check_odoo_connection() -> str:
 @app.tool()
 async def search_odoo_records(
     model: str,
-    domain: Optional[str] = None,
-    fields: Optional[str] = None,
+    domain: Optional[Union[str, List[Any]]] = None,
+    fields: Optional[Union[str, List[str]]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
     order: Optional[str] = None,
 ) -> str:
     """
     Search for records in an Odoo model.
-    
+
     Args:
         model: Odoo model name (e.g., 'res.partner', 'sale.order')
-        domain: Search domain as JSON string (e.g., '[["name", "ilike", "customer"]]')
-        fields: Comma-separated list of fields to retrieve (e.g., 'name,email,phone')
+        domain: Search domain as a list (e.g., [["name", "ilike", "customer"]]) or JSON string
+        fields: List of fields to retrieve or comma-separated string (e.g., 'name,email,phone')
         limit: Maximum number of records to return (default: 100, max: 1000)
         offset: Number of records to skip (default: 0)
         order: Sort order (e.g., 'name ASC', 'create_date DESC')
-    
+
     Returns:
         JSON string with search results
     """
     try:
         client = await get_odoo_client()
-        
-        # Parse domain from JSON string
+
+        # Accept domain as a list directly or parse from JSON string
         parsed_domain = None
-        if domain:
-            try:
-                parsed_domain = json.loads(domain)
-            except json.JSONDecodeError as e:
-                return json.dumps({
-                    "error": f"Invalid domain JSON: {e}"
-                }, indent=2)
+        if domain is not None:
+            if isinstance(domain, list):
+                parsed_domain = domain
+            else:
+                try:
+                    parsed_domain = json.loads(domain)
+                except json.JSONDecodeError as e:
+                    return json.dumps({
+                        "error": f"Invalid domain JSON: {e}"
+                    }, indent=2)
         
-        # Parse fields
+        # Accept fields as a list directly or parse from comma-separated string
         parsed_fields = None
         if fields:
-            parsed_fields = [f.strip() for f in fields.split(",")]
+            if isinstance(fields, list):
+                parsed_fields = fields
+            else:
+                parsed_fields = [f.strip() for f in fields.split(",")]
         
         # Search records
         records = await client.search_records(
