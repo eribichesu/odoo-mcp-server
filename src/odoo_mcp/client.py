@@ -637,7 +637,7 @@ class OdooClient:
         """
         if kwargs is None:
             kwargs = {}
-        
+
         for attempt in range(self.max_retries + 1):
             try:
                 result = await self._run_in_executor(
@@ -651,11 +651,19 @@ class OdooClient:
                     kwargs,
                 )
                 return result
-                
+
+            except xmlrpc.client.Fault as e:
+                # Server-side business error (validation, access rights, unknown
+                # method, bad arguments). Retrying cannot change the outcome, so
+                # fail fast instead of burning max_retries * retry_delay seconds.
+                logger.debug(f"{model}.{method} raised a server fault: {e}")
+                raise
+
             except Exception as e:
+                # Transport/connection-level error — worth retrying.
                 if attempt == self.max_retries:
                     raise e
-                
+
                 logger.warning(
                     f"Attempt {attempt + 1} failed for {model}.{method}: {e}. "
                     f"Retrying in {self.retry_delay} seconds..."

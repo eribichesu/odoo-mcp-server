@@ -14,7 +14,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mcp.server.fastmcp import FastMCP
-from mcp.types import TextContent, Tool
+from mcp.types import ToolAnnotations
 
 try:
     from .client import OdooClient, OdooError
@@ -50,26 +50,27 @@ async def get_odoo_client() -> OdooClient:
     return _odoo_client
 
 
-@app.tool()
-async def check_odoo_connection() -> str:
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Check Odoo Connection",
+        readOnlyHint=True,
+        openWorldHint=True,
+    )
+)
+async def check_odoo_connection() -> Dict[str, Any]:
     """
     Check the connection to the Odoo server and return status information.
-    
+
     Returns:
-        JSON string with connection status and server information
+        Connection status and server information
     """
     try:
         client = await get_odoo_client()
-        connection_info = await client.check_connection()
-        
-        return json.dumps(connection_info, indent=2)
-        
+        return await client.check_connection()
+
     except Exception as e:
         logger.error(f"Connection check failed: {e}")
-        return json.dumps({
-            "connected": False,
-            "error": str(e),
-        }, indent=2)
+        return {"connected": False, "error": str(e)}
 
 
 def _parse_domain(domain: Optional[Union[str, List[Any]]]) -> Optional[List[Any]]:
@@ -94,7 +95,9 @@ def _parse_json(value: Optional[Union[str, dict, list]], name: str = "value") ->
     raise ValueError(f"{name} must be a JSON string or dict/list, got {type(value).__name__}")
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Search Odoo Records", readOnlyHint=True)
+)
 async def search_odoo_records(
     model: str,
     domain: Optional[Union[str, List[Any]]] = None,
@@ -102,7 +105,7 @@ async def search_odoo_records(
     limit: Optional[int] = None,
     offset: int = 0,
     order: Optional[str] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Search for records in an Odoo model and return matching records with field data.
     Uses a single search_read RPC call for efficiency.
@@ -133,19 +136,26 @@ async def search_odoo_records(
             order=order,
         )
 
-        return json.dumps({"model": model, "count": len(records), "records": records}, indent=2, default=str)
+        return {"model": model, "count": len(records), "records": records}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Create Odoo Record",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+    )
+)
 async def create_odoo_record(
     model: str,
     values: Union[str, Dict[str, Any]],
-) -> str:
+) -> Dict[str, Any]:
     """
     Create a new record in an Odoo model.
     Use get_odoo_model_fields first to know required fields and their types.
@@ -165,20 +175,27 @@ async def create_odoo_record(
 
         record_id = await client.create_record(model, parsed_values)
 
-        return json.dumps({"model": model, "record_id": record_id, "success": True}, indent=2)
+        return {"model": model, "record_id": record_id, "success": True}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Update Odoo Record",
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=True,
+    )
+)
 async def update_odoo_record(
     model: str,
     record_ids: Union[int, str, List[Any]],
     values: Union[str, Dict[str, Any]],
-) -> str:
+) -> Dict[str, Any]:
     """
     Update one or more existing records in an Odoo model.
 
@@ -197,19 +214,26 @@ async def update_odoo_record(
 
         success = await client.update_record(model, parsed_ids, parsed_values)
 
-        return json.dumps({"model": model, "record_ids": parsed_ids, "values": parsed_values, "success": success}, indent=2)
+        return {"model": model, "record_ids": parsed_ids, "values": parsed_values, "success": success}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Delete Odoo Record",
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=True,
+    )
+)
 async def delete_odoo_record(
     model: str,
     record_ids: Union[int, str, List[Any]],
-) -> str:
+) -> Dict[str, Any]:
     """
     Delete one or more records from an Odoo model. This is permanent and cannot be undone.
     Consider archiving instead (update active=false) when supported by the model.
@@ -227,19 +251,21 @@ async def delete_odoo_record(
 
         success = await client.delete_record(model, parsed_ids)
 
-        return json.dumps({"model": model, "record_ids": parsed_ids, "success": success}, indent=2)
+        return {"model": model, "record_ids": parsed_ids, "success": success}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Get Odoo Model Fields", readOnlyHint=True)
+)
 async def get_odoo_model_fields(
     model: str,
     attributes: Optional[str] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Get field definitions and metadata for an Odoo model.
     Use this before create/update to understand required fields, types, and relations.
@@ -258,21 +284,28 @@ async def get_odoo_model_fields(
 
         fields = await client.get_model_fields(model, attributes=parsed_attributes)
 
-        return json.dumps({"model": model, "fields": fields}, indent=2, default=str)
+        return {"model": model, "fields": fields}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Call Odoo Method",
+        readOnlyHint=False,
+        destructiveHint=True,
+        openWorldHint=True,
+    )
+)
 async def call_odoo_method(
     model: str,
     method: str,
     args: Optional[Union[str, List[Any]]] = None,
     kwargs: Optional[Union[str, Dict[str, Any]]] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Call any public method on an Odoo model via execute_kw.
     Use this for business logic methods not covered by other tools, such as:
@@ -295,19 +328,21 @@ async def call_odoo_method(
 
         result = await client.call_method(model, method, parsed_args, parsed_kwargs)
 
-        return json.dumps({"model": model, "method": method, "result": result}, indent=2, default=str)
+        return {"model": model, "method": method, "result": result}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Count Odoo Records", readOnlyHint=True)
+)
 async def count_odoo_records(
     model: str,
     domain: Optional[Union[str, List[Any]]] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Count records matching a domain filter without fetching any data.
     Use this instead of search_odoo_records when you only need the count.
@@ -325,15 +360,17 @@ async def count_odoo_records(
 
         count = await client.search_count(model, parsed_domain)
 
-        return json.dumps({"model": model, "domain": parsed_domain, "count": count}, indent=2)
+        return {"model": model, "domain": parsed_domain, "count": count}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Group Odoo Records", readOnlyHint=True)
+)
 async def group_odoo_records(
     model: str,
     groupby: str,
@@ -341,7 +378,7 @@ async def group_odoo_records(
     domain: Optional[Union[str, List[Any]]] = None,
     limit: Optional[int] = None,
     orderby: Optional[str] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Group and aggregate records — equivalent to SQL GROUP BY with SUM/COUNT.
     Use for reporting, dashboards, and analytics. Each result group includes __count.
@@ -373,19 +410,21 @@ async def group_odoo_records(
             orderby=orderby,
         )
 
-        return json.dumps({"model": model, "groups": groups}, indent=2, default=str)
+        return {"model": model, "groups": groups}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Get Odoo Default Values", readOnlyHint=True)
+)
 async def get_odoo_default_values(
     model: str,
     fields: str,
-) -> str:
+) -> Dict[str, Any]:
     """
     Get the default values Odoo would pre-fill when creating a new record.
     Call this before create_odoo_record to know what fields have defaults.
@@ -403,21 +442,23 @@ async def get_odoo_default_values(
 
         defaults = await client.get_default_values(model, parsed_fields)
 
-        return json.dumps({"model": model, "defaults": defaults}, indent=2, default=str)
+        return {"model": model, "defaults": defaults}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Name Search Odoo", readOnlyHint=True)
+)
 async def name_search_odoo(
     model: str,
     name: str = "",
     domain: Optional[Union[str, List[Any]]] = None,
     limit: int = 10,
-) -> str:
+) -> Dict[str, Any]:
     """
     Search records by display name — used for autocomplete and many2one field lookups.
     Returns [id, display_name] pairs. Use this to find a record's ID from its name.
@@ -442,20 +483,27 @@ async def name_search_odoo(
             limit=limit,
         )
 
-        return json.dumps({"model": model, "name": name, "results": results}, indent=2)
+        return {"model": model, "name": name, "results": results}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Copy Odoo Record",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+    )
+)
 async def copy_odoo_record(
     model: str,
     record_id: int,
     default: Optional[Union[str, Dict[str, Any]]] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Duplicate an existing record, optionally overriding field values in the copy.
     Fields marked copy=False in the model (like unique sequences) are not copied.
@@ -474,19 +522,21 @@ async def copy_odoo_record(
 
         new_id = await client.copy_record(model, record_id, parsed_default)
 
-        return json.dumps({"model": model, "source_id": record_id, "new_record_id": new_id}, indent=2)
+        return {"model": model, "source_id": record_id, "new_record_id": new_id}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Get Odoo External ID", readOnlyHint=True)
+)
 async def get_odoo_external_id(
     model: str,
     record_ids: Union[str, List[Any]],
-) -> str:
+) -> Dict[str, Any]:
     """
     Get the XML/external IDs for records (e.g. 'base.res_partner_address_1').
     External IDs are used in data files, migrations, and cross-database references.
@@ -504,20 +554,22 @@ async def get_odoo_external_id(
 
         result = await client.get_external_id(model, parsed_ids)
 
-        return json.dumps({"model": model, "external_ids": result}, indent=2)
+        return {"model": model, "external_ids": result}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="Export Odoo Data", readOnlyHint=True)
+)
 async def export_odoo_data(
     model: str,
     record_ids: Union[str, List[Any]],
     fields: str,
-) -> str:
+) -> Dict[str, Any]:
     """
     Export records in CSV-compatible format. Supports dotted paths for related fields
     (e.g. 'country_id/name' to get the country name instead of the ID).
@@ -538,18 +590,20 @@ async def export_odoo_data(
 
         result = await client.export_data(model, parsed_ids, parsed_fields)
 
-        return json.dumps({"model": model, "fields": parsed_fields, "rows": result.get("datas", [])}, indent=2, default=str)
+        return {"model": model, "fields": parsed_fields, "rows": result.get("datas", [])}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
-@app.tool()
+@app.tool(
+    annotations=ToolAnnotations(title="List Odoo Models", readOnlyHint=True)
+)
 async def list_odoo_models(
     filter: Optional[str] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     List all installed Odoo models available in this instance.
     Use this to discover which models exist before calling other tools.
@@ -566,12 +620,12 @@ async def list_odoo_models(
 
         models = await client.list_models(name_filter=filter)
 
-        return json.dumps({"count": len(models), "models": models}, indent=2, default=str)
+        return {"count": len(models), "models": models}
 
     except OdooError as e:
-        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
+        return {"error": f"Odoo error: {e}"}
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {e}"}, indent=2)
+        return {"error": f"Unexpected error: {e}"}
 
 
 # Resources for model information and examples
