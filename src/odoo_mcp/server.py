@@ -59,14 +59,18 @@ async def get_odoo_client() -> OdooClient:
 )
 async def check_odoo_connection() -> Dict[str, Any]:
     """
-    Check the connection to the Odoo server and return status information.
+    Check the connection to the Odoo server and return status information,
+    including which transport is active ('json2' for Odoo 19+, or 'xmlrpc') and
+    the server version.
 
     Returns:
-        Connection status and server information
+        Connection status, active transport, and server information
     """
     try:
         client = await get_odoo_client()
-        return await client.check_connection()
+        info = await client.check_connection()
+        info.setdefault("mcp_server_version", settings.server_version)
+        return info
 
     except Exception as e:
         logger.error(f"Connection check failed: {e}")

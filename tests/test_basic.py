@@ -1,18 +1,19 @@
 """
 Basic tests for the Odoo MCP server functionality.
+
+Transport-level behaviour (retries, JSON-2/XML-RPC wire format) lives in
+``test_transport.py``.
 """
 
-import xmlrpc.client
-
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from odoo_mcp.client import OdooClient, OdooError
 from odoo_mcp.config import Settings
 
 
 @pytest.fixture
 def client():
-    """Create an OdooClient with a mocked, already-authenticated RPC layer."""
+    """OdooClient with the transport call layer (_execute_kw) mocked out."""
     settings = Settings(
         odoo_url="https://test.odoo.com",
         odoo_database="test_db",
@@ -20,9 +21,6 @@ def client():
         odoo_password="test_password",
     )
     client = OdooClient(settings)
-    # Bypass the real network authentication handshake.
-    client._authenticated = True
-    client.uid = 1
     client._execute_kw = AsyncMock()
     return client
 
@@ -74,66 +72,6 @@ async def test_create_record_wraps_errors(client):
 
     with pytest.raises(OdooError, match="Validation error"):
         await client.create_record("res.partner", {"name": "Test"})
-
-
-@pytest.fixture
-def rpc_client():
-    """OdooClient authenticated, with only the RPC transport (_run_in_executor) mocked.
-
-    This exercises the real _execute_kw retry logic instead of stubbing it out.
-    """
-    settings = Settings(
-        odoo_url="https://test.odoo.com",
-        odoo_database="test_db",
-        odoo_username="test_user",
-        odoo_password="test_password",
-        odoo_max_retries=2,
-        odoo_retry_delay=0.0,  # keep the test fast
-    )
-    client = OdooClient(settings)
-    client._authenticated = True
-    client.uid = 1
-    client._models = MagicMock()  # .execute_kw is read but the call is mocked out
-    client._run_in_executor = AsyncMock()
-    return client
-
-
-@pytest.mark.asyncio
-async def test_execute_kw_does_not_retry_server_faults(rpc_client):
-    """A server-side Fault (validation/access) must fail fast, not retry."""
-    rpc_client._run_in_executor.side_effect = xmlrpc.client.Fault(2, "Access Denied")
-
-    with pytest.raises(xmlrpc.client.Fault):
-        await rpc_client._execute_kw("res.partner", "read", [[1]])
-
-    # Called exactly once — no wasted retries on a non-recoverable error.
-    assert rpc_client._run_in_executor.await_count == 1
-
-
-@pytest.mark.asyncio
-async def test_execute_kw_retries_transport_errors(rpc_client):
-    """A transport/connection error is retried up to max_retries + 1 attempts."""
-    rpc_client._run_in_executor.side_effect = ConnectionError("network down")
-
-    with pytest.raises(ConnectionError):
-        await rpc_client._execute_kw("res.partner", "read", [[1]])
-
-    # max_retries=2 -> 3 total attempts.
-    assert rpc_client._run_in_executor.await_count == 3
-
-
-@pytest.mark.asyncio
-async def test_execute_kw_recovers_after_transient_error(rpc_client):
-    """A transient transport error followed by success returns the result."""
-    rpc_client._run_in_executor.side_effect = [
-        ConnectionError("blip"),
-        [{"id": 1, "name": "ACME"}],
-    ]
-
-    result = await rpc_client._execute_kw("res.partner", "read", [[1]])
-
-    assert result == [{"id": 1, "name": "ACME"}]
-    assert rpc_client._run_in_executor.await_count == 2
 
 
 def test_settings_validation():

@@ -1,11 +1,22 @@
 """
-Odoo XML-RPC client for async operations.
+Async Odoo client.
+
+Exposes CRUD, search and metadata operations on top of a pluggable transport
+(XML-RPC or JSON-2 — see ``transport.py``). The client is transport-agnostic:
+it always speaks the ``execute_kw(model, method, args, kwargs)`` convention and
+the transport translates it to the wire format.
 """
 
-import asyncio
 import logging
-import xmlrpc.client
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+
+from .errors import (
+    OdooAuthenticationError,
+    OdooConnectionError,
+    OdooError,
+    OdooRequestError,
+)
+from .transport import create_transport
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -13,135 +24,51 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-class OdooAuthenticationError(Exception):
-    """Raised when authentication with Odoo fails."""
-
-
-class OdooConnectionError(Exception):
-    """Raised when connection to Odoo fails."""
-
-
-class OdooError(Exception):
-    """Base class for Odoo-related errors."""
+# Re-exported for backwards compatibility (these used to live in this module).
+__all__ = [
+    "OdooClient",
+    "OdooError",
+    "OdooAuthenticationError",
+    "OdooConnectionError",
+    "OdooRequestError",
+]
 
 
 class OdooClient:
     """
-    Asynchronous client for interacting with Odoo via XML-RPC.
-    
-    This client provides methods for authenticating with Odoo and performing
-    CRUD operations on Odoo models.
+    Asynchronous client for interacting with Odoo.
+
+    Connection, authentication and retries are delegated to a transport selected
+    by configuration (``ODOO_TRANSPORT``): JSON-2 for Odoo 19+, XML-RPC for
+    older instances.
     """
 
     def __init__(self, settings: "Settings"):
         """
         Initialize the Odoo client.
-        
+
         Args:
             settings: Application settings containing Odoo configuration
         """
-        self.url = settings.odoo_url
         self.database = settings.odoo_database
-        self.username = settings.odoo_username
-        self.password = settings.odoo_password
-        self.timeout = settings.odoo_timeout
-        self.max_retries = settings.odoo_max_retries
-        self.retry_delay = settings.odoo_retry_delay
         self.default_limit = settings.default_limit
         self.max_limit = settings.max_limit
-        
-        # Initialize connection state
-        self._common = None
-        self._models = None
-        self._authenticated = False
-        self.uid = None
 
-    async def authenticate(self) -> int:
-        """
-        Authenticate with Odoo and get user ID.
-        
-        Returns:
-            User ID if authentication successful
-            
-        Raises:
-            OdooAuthenticationError: If authentication fails
-            OdooConnectionError: If connection fails
-        """
-        try:
-            # Create common client for authentication
-            common_url = f"{self.url}/xmlrpc/2/common"
-            try:
-                # Try with timeout parameter first
-                self._common = xmlrpc.client.ServerProxy(common_url, timeout=self.timeout)
-            except TypeError:
-                # Fallback without timeout for older Python versions
-                self._common = xmlrpc.client.ServerProxy(common_url)
-            
-            # Authenticate and get user ID
-            self.uid = await self._run_in_executor(
-                self._common.authenticate,
-                self.database,
-                self.username,
-                self.password,
-                {}
-            )
-            
-            if not self.uid:
-                raise OdooAuthenticationError(
-                    f"Authentication failed for user '{self.username}' on database '{self.database}'"
-                )
-            
-            # Create models client
-            models_url = f"{self.url}/xmlrpc/2/object"
-            try:
-                # Try with timeout parameter first
-                self._models = xmlrpc.client.ServerProxy(models_url, timeout=self.timeout)
-            except TypeError:
-                # Fallback without timeout for older Python versions
-                self._models = xmlrpc.client.ServerProxy(models_url)
-            
-            self._authenticated = True
-            logger.info(f"Successfully authenticated with Odoo as user {self.uid}")
-            
-            return self.uid
-            
-        except xmlrpc.client.Fault as e:
-            raise OdooAuthenticationError(f"XML-RPC fault during authentication: {e}")
-        except Exception as e:
-            raise OdooConnectionError(f"Failed to connect to Odoo: {e}")
+        self._transport = create_transport(settings)
+
+    @property
+    def transport_name(self) -> str:
+        """Name of the active transport ('json2' or 'xmlrpc')."""
+        return self._transport.name
 
     async def check_connection(self) -> Dict[str, Any]:
         """
         Check connection to Odoo and return server info.
-        
+
         Returns:
-            Dictionary with server information
+            Dictionary with server information and the active transport.
         """
-        try:
-            if not hasattr(self, '_common') or not self._common:
-                common_url = f"{self.url}/xmlrpc/2/common"
-                try:
-                    # Try with timeout parameter first
-                    self._common = xmlrpc.client.ServerProxy(common_url, timeout=self.timeout)
-                except TypeError:
-                    # Fallback without timeout for older Python versions
-                    self._common = xmlrpc.client.ServerProxy(common_url)
-            
-            version_info = await self._run_in_executor(self._common.version)
-            return {
-                "server_version": version_info.get("server_version"),
-                "server_serie": version_info.get("server_serie"),
-                "protocol_version": version_info.get("protocol_version"),
-                "database": self.database,
-                "connected": True,
-            }
-        except Exception as e:
-            logger.error(f"Connection check failed: {e}")
-            return {
-                "connected": False,
-                "error": str(e),
-            }
+        return await self._transport.check_connection()
 
     async def search_records(
         self,
@@ -624,58 +551,25 @@ class OdooClient:
         kwargs: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
-        Execute a method on an Odoo model with retry logic.
-        
+        Execute a method on an Odoo model via the active transport.
+
+        Retries, authentication and the on-the-wire format are handled by the
+        transport (see ``transport.py``).
+
         Args:
             model: Odoo model name
             method: Method name
             args: Method arguments
             kwargs: Method keyword arguments
-            
+
         Returns:
             Method result
         """
-        if kwargs is None:
-            kwargs = {}
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                result = await self._run_in_executor(
-                    self._models.execute_kw,
-                    self.database,
-                    self.uid,
-                    self.password,
-                    model,
-                    method,
-                    args,
-                    kwargs,
-                )
-                return result
-
-            except xmlrpc.client.Fault as e:
-                # Server-side business error (validation, access rights, unknown
-                # method, bad arguments). Retrying cannot change the outcome, so
-                # fail fast instead of burning max_retries * retry_delay seconds.
-                logger.debug(f"{model}.{method} raised a server fault: {e}")
-                raise
-
-            except Exception as e:
-                # Transport/connection-level error — worth retrying.
-                if attempt == self.max_retries:
-                    raise e
-
-                logger.warning(
-                    f"Attempt {attempt + 1} failed for {model}.{method}: {e}. "
-                    f"Retrying in {self.retry_delay} seconds..."
-                )
-                await asyncio.sleep(self.retry_delay)
+        return await self._transport.execute_kw(model, method, args, kwargs or {})
 
     async def _ensure_authenticated(self) -> None:
-        """Ensure the client is authenticated."""
-        if not self._authenticated or not self.uid:
-            await self.authenticate()
+        """Authentication is performed lazily by the transport on first use.
 
-    async def _run_in_executor(self, func, *args) -> Any:
-        """Run a blocking function in a thread executor."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, func, *args)
+        Kept as a no-op so the operation methods can call it uniformly.
+        """
+        return None

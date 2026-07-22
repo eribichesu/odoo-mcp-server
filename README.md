@@ -1,14 +1,18 @@
 # Odoo MCP Server
 
-An MCP (Model Context Protocol) server for Odoo that allows interaction with Odoo online instances via XML-RPC API.
+An MCP (Model Context Protocol) server for Odoo. It connects to Odoo instances
+over the modern **JSON-2 API** (Odoo 19+) or the legacy **XML-RPC API**
+(Odoo ≤ 18), selected automatically from your configuration.
 
 ## Features
 
+- **Two transports**: JSON-2 (`/json/2`, Odoo 19+) and XML-RPC (`/xmlrpc/2`), chosen via `ODOO_TRANSPORT`
+- **API-key & 2FA support**: authenticate with an API key (required for JSON-2 and for 2FA-enabled accounts)
 - **CRUD Operations**: Create, read, update, and delete records in any Odoo model
 - **Model Introspection**: Get field definitions and metadata for Odoo models
 - **Custom Method Calls**: Execute custom methods on Odoo models
 - **Async Support**: Built with async/await for better performance
-- **Error Handling**: Comprehensive error handling with detailed error messages
+- **Error Handling**: Fails fast on business errors, retries transient transport errors
 - **Type Safety**: Full type hints throughout the codebase
 
 ## Installation
@@ -43,6 +47,8 @@ ODOO_URL=https://your-odoo-instance.odoo.com
 ODOO_DATABASE=your_database_name
 ODOO_USERNAME=your_username
 ODOO_PASSWORD=your_password
+ODOO_API_KEY=your_api_key      # required for Odoo 19+ / JSON-2 and for 2FA accounts
+ODOO_TRANSPORT=auto            # auto | json2 | xmlrpc
 SERVER_NAME=odoo-mcp
 ```
 
@@ -51,8 +57,27 @@ SERVER_NAME=odoo-mcp
 - `ODOO_URL`: Your Odoo instance URL
 - `ODOO_DATABASE`: Database name
 - `ODOO_USERNAME`: Odoo username
-- `ODOO_PASSWORD`: Odoo password
+- `ODOO_PASSWORD`: Odoo password (XML-RPC only)
+- `ODOO_API_KEY`: Odoo API key — **required for the JSON-2 transport** and for any account with two-factor authentication enabled
+- `ODOO_TRANSPORT`: `auto` (default — JSON-2 when an API key is set, else XML-RPC), `json2`, or `xmlrpc`
 - `SERVER_NAME`: MCP server name (default: "odoo-mcp")
+
+### Choosing a transport
+
+| Odoo version | Recommended | Notes |
+| --- | --- | --- |
+| 19.0+ | `json2` (or `auto` + API key) | XML-RPC is deprecated; removed on Odoo Online in 19.1 and on-prem in 20 |
+| ≤ 18 | `xmlrpc` (or `auto` without an API key) | JSON-2 does not exist before 19 |
+
+The **JSON-2 API requires an API key** (username/password auth is not supported).
+Generate one in Odoo under **Preferences → Account Security → New API Key**.
+
+> **Two-factor authentication:** if 2FA is enabled on the account, the plain
+> password will not work over the API on either transport — set `ODOO_API_KEY`
+> and use it instead.
+
+To confirm which transport is live, call the `check_odoo_connection` tool — its
+response includes a `transport` field (`json2` or `xmlrpc`) and the server version.
 
 ## Usage
 

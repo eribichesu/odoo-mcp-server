@@ -44,11 +44,29 @@ class Settings(BaseSettings):
     )
     odoo_username: str = Field(
         ...,  # Required
-        description="Odoo username or email",
+        description="Odoo username or email (used by the XML-RPC transport)",
     )
     odoo_password: str = Field(
         ...,  # Required
-        description="Odoo password or API key",
+        description="Odoo password or API key (used by the XML-RPC transport)",
+    )
+
+    # Authentication / transport
+    odoo_api_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Odoo API key. Required for the JSON-2 transport (Odoo 19+) and "
+            "recommended for XML-RPC when two-factor authentication is enabled. "
+            "Generate one under Preferences > Account Security > New API Key."
+        ),
+    )
+    odoo_transport: str = Field(
+        default="auto",
+        description=(
+            "Which external API to use: 'auto' (JSON-2 when an API key is set, "
+            "otherwise XML-RPC), 'json2' (Odoo 19+ /json/2 endpoint), or "
+            "'xmlrpc' (legacy /xmlrpc/2, deprecated in Odoo 19)."
+        ),
     )
 
     # Optional Odoo settings
@@ -71,7 +89,7 @@ class Settings(BaseSettings):
         description="MCP server name",
     )
     server_version: str = Field(
-        default="0.1.0",
+        default="0.2.0",
         description="MCP server version",
     )
 
