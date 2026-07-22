@@ -4,75 +4,12 @@ Configuration management for the Odoo MCP server.
 
 from pathlib import Path
 from typing import Optional
-from pydantic import Field, HttpUrl
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Get the project root directory (two levels up from this file)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
-
-
-class OdooSettings(BaseSettings):
-    """Settings for Odoo connection."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="ODOO_",
-        env_file=str(ENV_FILE_PATH),
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-    )
-
-    # Odoo connection settings
-    url: HttpUrl = Field(
-        ...,
-        description="Odoo server URL (e.g., https://your-instance.odoo.com)",
-    )
-    database: str = Field(
-        ...,
-        description="Odoo database name",
-    )
-    username: str = Field(
-        ...,
-        description="Odoo username",
-    )
-    password: str = Field(
-        ...,
-        description="Odoo password or API key",
-    )
-
-    # Optional settings
-    timeout: int = Field(
-        default=30,
-        description="Request timeout in seconds",
-    )
-    max_retries: int = Field(
-        default=3,
-        description="Maximum number of retries for failed requests",
-    )
-    retry_delay: float = Field(
-        default=1.0,
-        description="Delay between retries in seconds",
-    )
-
-    # MCP server settings
-    server_name: str = Field(
-        default="odoo-mcp",
-        description="MCP server name",
-    )
-    server_version: str = Field(
-        default="0.1.0",
-        description="MCP server version",
-    )
-
-    # Default limits for operations
-    default_limit: int = Field(
-        default=100,
-        description="Default limit for search operations",
-    )
-    max_limit: int = Field(
-        default=1000,
-        description="Maximum limit for search operations",
-    )
 
 
 class Settings(BaseSettings):

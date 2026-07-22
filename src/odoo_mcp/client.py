@@ -3,25 +3,12 @@ Odoo XML-RPC client for async operations.
 """
 
 import asyncio
-import json
 import logging
 import xmlrpc.client
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-
-from .config import OdooSettings
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import Settings
-
-import asyncio
-import logging
-import xmlrpc.client
-from typing import Any, Dict, List, Optional, Union
-
-import requests
-from pydantic import HttpUrl
-
-from .config import OdooSettings
 
 
 logger = logging.getLogger(__name__)

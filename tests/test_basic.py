@@ -3,89 +3,75 @@ Basic tests for the Odoo MCP server functionality.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from odoo_mcp.client import OdooClient, OdooError
 from odoo_mcp.config import Settings
-from odoo_mcp.tools import search_records_tool, create_record_tool
 
 
 @pytest.fixture
-def mock_odoo_client():
-    """Create a mock Odoo client for testing."""
-    client = AsyncMock(spec=OdooClient)
+def client():
+    """Create an OdooClient with a mocked, already-authenticated RPC layer."""
+    settings = Settings(
+        odoo_url="https://test.odoo.com",
+        odoo_database="test_db",
+        odoo_username="test_user",
+        odoo_password="test_password",
+    )
+    client = OdooClient(settings)
+    # Bypass the real network authentication handshake.
+    client._authenticated = True
+    client.uid = 1
+    client._execute_kw = AsyncMock()
     return client
 
 
 @pytest.mark.asyncio
-async def test_search_records_tool_success(mock_odoo_client):
-    """Test successful record search."""
-    # Mock the client's search_records method
+async def test_search_read_success(client):
+    """search_read returns the records from the RPC layer."""
     mock_records = [{"id": 1, "name": "Test Record"}]
-    mock_odoo_client.search_records.return_value = mock_records
-    
-    result = await search_records_tool(
-        client=mock_odoo_client,
+    client._execute_kw.return_value = mock_records
+
+    records = await client.search_read(
         model="res.partner",
         domain=[("name", "=", "Test")],
         fields=["id", "name"],
     )
-    
-    assert result["success"] is True
-    assert result["model"] == "res.partner"
-    assert result["count"] == 1
-    assert result["records"] == mock_records
+
+    assert records == mock_records
+    client._execute_kw.assert_awaited_once()
+    # search_read must go through a single RPC call, not search + read.
+    assert client._execute_kw.await_args.args[1] == "search_read"
 
 
 @pytest.mark.asyncio
-async def test_search_records_tool_error(mock_odoo_client):
-    """Test record search with Odoo error."""
-    # Mock the client to raise an OdooError
-    mock_odoo_client.search_records.side_effect = OdooError("Access denied")
-    
-    result = await search_records_tool(
-        client=mock_odoo_client,
-        model="res.partner",
-    )
-    
-    assert result["success"] is False
-    assert result["error"] == "Access denied"
-    assert result["error_type"] == "OdooError"
+async def test_search_read_wraps_errors(client):
+    """A failing RPC call is wrapped in OdooError."""
+    client._execute_kw.side_effect = RuntimeError("Access denied")
+
+    with pytest.raises(OdooError, match="Access denied"):
+        await client.search_read(model="res.partner")
 
 
 @pytest.mark.asyncio
-async def test_create_record_tool_success(mock_odoo_client):
-    """Test successful record creation."""
-    # Mock the client's create_record method
-    mock_odoo_client.create_record.return_value = 123
-    
-    values = {"name": "New Partner", "email": "test@example.com"}
-    result = await create_record_tool(
-        client=mock_odoo_client,
-        model="res.partner",
-        values=values,
+async def test_create_record_success(client):
+    """create_record returns the new record id."""
+    client._execute_kw.return_value = 123
+
+    record_id = await client.create_record(
+        "res.partner", {"name": "New Partner", "email": "test@example.com"}
     )
-    
-    assert result["success"] is True
-    assert result["model"] == "res.partner"
-    assert result["record_id"] == 123
-    assert result["values"] == values
+
+    assert record_id == 123
+    assert client._execute_kw.await_args.args[1] == "create"
 
 
 @pytest.mark.asyncio
-async def test_create_record_tool_error(mock_odoo_client):
-    """Test record creation with error."""
-    # Mock the client to raise an OdooError
-    mock_odoo_client.create_record.side_effect = OdooError("Validation error")
-    
-    result = await create_record_tool(
-        client=mock_odoo_client,
-        model="res.partner",
-        values={"name": "Test"},
-    )
-    
-    assert result["success"] is False
-    assert result["error"] == "Validation error"
-    assert result["error_type"] == "OdooError"
+async def test_create_record_wraps_errors(client):
+    """A validation failure surfaces as OdooError."""
+    client._execute_kw.side_effect = RuntimeError("Validation error")
+
+    with pytest.raises(OdooError, match="Validation error"):
+        await client.create_record("res.partner", {"name": "Test"})
 
 
 def test_settings_validation():

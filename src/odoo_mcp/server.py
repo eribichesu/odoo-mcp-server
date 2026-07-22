@@ -19,26 +19,10 @@ from mcp.types import TextContent, Tool
 try:
     from .client import OdooClient, OdooError
     from .config import get_settings
-    from .tools import (
-        create_record_tool,
-        delete_record_tool,
-        get_model_fields_tool,
-        search_records_tool,
-        update_record_tool,
-        call_method_tool,
-    )
 except ImportError:
     # Fallback for direct execution
     from odoo_mcp.client import OdooClient, OdooError
     from odoo_mcp.config import get_settings
-    from odoo_mcp.tools import (
-        create_record_tool,
-        delete_record_tool,
-        get_model_fields_tool,
-        search_records_tool,
-        update_record_tool,
-        call_method_tool,
-    )
 
 
 # Configure logging

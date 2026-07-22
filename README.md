@@ -219,10 +219,9 @@ odoo.mcp/
 ├── src/
 │   └── odoo_mcp/
 │       ├── __init__.py
-│       ├── server.py      # Main MCP server
+│       ├── server.py      # Main MCP server (tool/resource/prompt definitions)
 │       ├── client.py      # Odoo XML-RPC client
-│       ├── config.py      # Configuration management
-│       └── tools.py       # MCP tool implementations
+│       └── config.py      # Configuration management
 ├── tests/
 │   ├── __init__.py
 │   └── test_basic.py
