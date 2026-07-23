@@ -36,7 +36,8 @@ def _settings(**overrides):
         odoo_retry_delay=0.0,  # keep tests fast
     )
     base.update(overrides)
-    return Settings(**base)
+    # _env_file=None keeps the test hermetic — never read the real project .env.
+    return Settings(_env_file=None, **base)
 
 
 class _FakeResponse:
@@ -97,6 +98,17 @@ def test_json2_body_search_read(json2):
 def test_json2_body_write_splits_ids_and_vals(json2):
     body = json2._build_body("write", [[1, 2], {"name": "X"}], {})
     assert body == {"ids": [1, 2], "vals": {"name": "X"}}
+
+
+def test_json2_body_default_get_uses_fields(json2):
+    # Verified against Odoo 19: the JSON-2 param is "fields", not "fields_list".
+    body = json2._build_body("default_get", [["state", "company_id"]], {})
+    assert body == {"fields": ["state", "company_id"]}
+
+
+def test_json2_body_export_data_uses_fields_to_export(json2):
+    body = json2._build_body("export_data", [[1], ["name"]], {})
+    assert body == {"ids": [1], "fields_to_export": ["name"]}
 
 
 def test_json2_body_normalizes_single_id(json2):

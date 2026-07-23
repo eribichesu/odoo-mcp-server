@@ -210,7 +210,8 @@ class Json2Transport(OdooTransport):
         "read_group": ["domain"],
         "formatted_read_group": ["domain"],
         "create": ["vals_list"],
-        "default_get": ["fields_list"],
+        # JSON-2 exposes default_get's argument as "fields" (verified against 19.0).
+        "default_get": ["fields"],
         "name_search": ["name"],
         "fields_get": ["allfields"],
         "load": ["fields", "data"],

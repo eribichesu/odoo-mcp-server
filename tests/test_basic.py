@@ -15,6 +15,7 @@ from odoo_mcp.config import Settings
 def client():
     """OdooClient with the transport call layer (_execute_kw) mocked out."""
     settings = Settings(
+        _env_file=None,  # hermetic: ignore the real project .env
         odoo_url="https://test.odoo.com",
         odoo_database="test_db",
         odoo_username="test_user",
