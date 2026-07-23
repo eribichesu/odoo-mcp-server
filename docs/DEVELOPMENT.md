@@ -76,10 +76,9 @@ pytest tests/ -v -s
 odoo.mcp/
 ├── src/odoo_mcp/          # Main package
 │   ├── __init__.py        # Package exports
-│   ├── server.py          # FastMCP server implementation
+│   ├── server.py          # FastMCP server implementation (tools/resources/prompts)
 │   ├── client.py          # Odoo XML-RPC client
-│   ├── config.py          # Configuration management
-│   └── tools.py           # MCP tool implementations
+│   └── config.py          # Configuration management
 ├── tests/                 # Test suite
 ├── config/                # Configuration examples
 ├── .github/               # GitHub configuration
@@ -92,28 +91,29 @@ odoo.mcp/
 
 ### Adding a New MCP Tool
 
-1. Implement the tool function in `src/odoo_mcp/tools.py`:
+1. Add the underlying operation to `OdooClient` in `src/odoo_mcp/client.py` if it
+   isn't covered by an existing method:
 ```python
-async def my_new_tool(
-    client: OdooClient,
-    param1: str,
-    param2: Optional[int] = None,
-) -> Dict[str, Any]:
-    """Tool description."""
+async def some_method(self, model: str, param: str) -> Any:
+    """Client-level Odoo operation."""
+    await self._ensure_authenticated()
     try:
-        result = await client.some_method(param1, param2)
-        return {"success": True, "result": result}
-    except OdooError as e:
-        return {"success": False, "error": str(e)}
+        return await self._execute_kw(model, "some_orm_method", [param])
+    except Exception as e:
+        raise OdooError(f"Failed to run some_orm_method on {model}: {e}")
 ```
 
-2. Register the tool in `src/odoo_mcp/server.py`:
+2. Expose it as an MCP tool directly in `src/odoo_mcp/server.py`:
 ```python
 @app.tool()
-async def my_new_tool_mcp(param1: str, param2: int = 100):
-    """Tool description for MCP."""
-    client = await get_odoo_client()
-    return await my_new_tool(client, param1, param2)
+async def my_new_tool(model: str, param: str) -> str:
+    """Tool description shown to the LLM."""
+    try:
+        client = await get_odoo_client()
+        result = await client.some_method(model, param)
+        return json.dumps({"model": model, "result": result}, indent=2, default=str)
+    except OdooError as e:
+        return json.dumps({"error": f"Odoo error: {e}"}, indent=2)
 ```
 
 3. Add tests in `tests/test_basic.py` or create a new test file.
