@@ -24,6 +24,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _single_id(result: Any) -> Any:
+    """Normalize a create/copy result to a single id.
+
+    XML-RPC ``create``/``copy`` return a bare int, but the JSON-2 API uses
+    create-multi semantics and returns a list of ids (e.g. ``[224]``). Callers
+    of ``create_record``/``copy_record`` expect a single id, so unwrap a
+    one-element list.
+    """
+    if isinstance(result, list):
+        return result[0] if result else None
+    return result
+
+
 # Re-exported for backwards compatibility (these used to live in this module).
 __all__ = [
     "OdooClient",
@@ -292,6 +306,7 @@ class OdooClient:
                 kwargs["default"] = default
 
             new_id = await self._execute_kw(model, "copy", [record_id], kwargs)
+            new_id = _single_id(new_id)
             logger.info(f"Copied record {record_id} in {model} -> new id {new_id}")
             return new_id
 
@@ -422,6 +437,7 @@ class OdooClient:
 
         try:
             record_id = await self._execute_kw(model, "create", [values])
+            record_id = _single_id(record_id)
             logger.info(f"Created record {record_id} in {model}")
             return record_id
 

@@ -75,6 +75,30 @@ async def test_create_record_wraps_errors(client):
         await client.create_record("res.partner", {"name": "Test"})
 
 
+@pytest.mark.asyncio
+async def test_create_record_normalizes_json2_list_result(client):
+    """JSON-2 create() returns a list of ids; create_record must return a bare id."""
+    client._execute_kw.return_value = [226]  # create-multi semantics
+    record_id = await client.create_record("res.partner", {"name": "ACME"})
+    assert record_id == 226
+
+
+@pytest.mark.asyncio
+async def test_copy_record_normalizes_json2_list_result(client):
+    """JSON-2 copy() likewise returns a list; copy_record must return a bare id."""
+    client._execute_kw.return_value = [227]
+    new_id = await client.copy_record("res.partner", 226, {"name": "copy"})
+    assert new_id == 227
+
+
+@pytest.mark.asyncio
+async def test_create_record_keeps_xmlrpc_int_result(client):
+    """XML-RPC create() returns a bare int, which must pass through unchanged."""
+    client._execute_kw.return_value = 42
+    record_id = await client.create_record("res.partner", {"name": "ACME"})
+    assert record_id == 42
+
+
 def test_settings_validation():
     """Test that settings are properly validated."""
     settings = Settings(
