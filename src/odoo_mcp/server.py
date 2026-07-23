@@ -99,13 +99,23 @@ def _parse_json(value: Optional[Union[str, dict, list]], name: str = "value") ->
     raise ValueError(f"{name} must be a JSON string or dict/list, got {type(value).__name__}")
 
 
+def _parse_fields(fields: Optional[Union[str, List[str]]]) -> Optional[List[str]]:
+    """Accept a field list directly (some MCP clients send arrays) or a
+    comma-separated string. Returns None when nothing was provided."""
+    if not fields:
+        return None
+    if isinstance(fields, list):
+        return fields
+    return [f.strip() for f in fields.split(",")]
+
+
 @app.tool(
     annotations=ToolAnnotations(title="Search Odoo Records", readOnlyHint=True)
 )
 async def search_odoo_records(
     model: str,
     domain: Optional[Union[str, List[Any]]] = None,
-    fields: Optional[str] = None,
+    fields: Optional[Union[str, List[str]]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
     order: Optional[str] = None,
@@ -117,8 +127,8 @@ async def search_odoo_records(
 
     Args:
         model: Odoo model technical name (e.g., 'res.partner', 'sale.order')
-        domain: Search filter as JSON list of triples, e.g. '[["customer_rank",">",0]]'. Use '[]' or omit for all records.
-        fields: Comma-separated field names to return, e.g. 'name,email,phone'. Omit for all fields.
+        domain: Search filter as a list of triples (e.g. [["customer_rank",">",0]]) or a JSON string. Use [] or omit for all records.
+        fields: Field names as a list (e.g. ["name","email"]) or a comma-separated string. Omit for all fields.
         limit: Max records to return (default 100, max 1000)
         offset: Records to skip for pagination (default 0)
         order: Sort order, e.g. 'name ASC' or 'create_date DESC'
@@ -129,7 +139,7 @@ async def search_odoo_records(
     try:
         client = await get_odoo_client()
         parsed_domain = _parse_domain(domain)
-        parsed_fields = [f.strip() for f in fields.split(",")] if fields else None
+        parsed_fields = _parse_fields(fields)
 
         records = await client.search_read(
             model=model,
