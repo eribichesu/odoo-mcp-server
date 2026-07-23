@@ -386,15 +386,17 @@ async def group_odoo_records(
     """
     Group and aggregate records — equivalent to SQL GROUP BY with SUM/COUNT.
     Use for reporting, dashboards, and analytics. Each result group includes __count.
+    On Odoo 19+ this uses formatted_read_group (read_group is deprecated); groups
+    carry an __extra_domain you can feed straight back into a search.
 
     Args:
         model: Odoo model technical name (e.g., 'sale.order', 'account.move')
         groupby: Comma-separated fields to group by. Supports date granularity: 'date_order:month', 'create_date:year'
-        fields: Comma-separated fields to aggregate, e.g. 'amount_total:sum,amount_total:avg'.
-                Include group fields too. Omit for just counts.
+        fields: Comma-separated aggregate specs, e.g. 'amount_total:sum,amount_total:avg'.
+                Must be 'field:agg' form; plain group-field names are ignored. Omit for just counts.
         domain: Filter as JSON list, e.g. '[["state","=","sale"]]'. Use '[]' or omit for all records.
         limit: Max number of groups to return
-        orderby: Sort order for groups, e.g. 'amount_total desc'
+        orderby: Sort order for groups, e.g. 'amount_total:sum desc' or '__count desc'
 
     Returns:
         JSON with 'model' and 'groups' list. Each group has __count, grouped field value, and aggregated values.

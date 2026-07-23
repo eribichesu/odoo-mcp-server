@@ -99,6 +99,75 @@ async def test_create_record_keeps_xmlrpc_int_result(client):
     assert record_id == 42
 
 
+@pytest.mark.asyncio
+async def test_read_group_legacy_on_old_odoo(client):
+    """On Odoo <18 read_group() calls the legacy 'read_group' method."""
+    client._use_formatted_read_group = AsyncMock(return_value=False)
+    client._execute_kw.return_value = []
+
+    await client.read_group(
+        "sale.order", domain=[], fields=["amount_total:sum"], groupby=["state"]
+    )
+
+    method = client._execute_kw.await_args.args[1]
+    kwargs = client._execute_kw.await_args.args[3]
+    assert method == "read_group"
+    assert "lazy" in kwargs  # legacy-only arg
+    assert kwargs["fields"] == ["amount_total:sum"]
+
+
+@pytest.mark.asyncio
+async def test_read_group_uses_formatted_on_odoo_19(client):
+    """On Odoo 18+ read_group() routes to 'formatted_read_group' with split args."""
+    client._use_formatted_read_group = AsyncMock(return_value=True)
+    client._execute_kw.return_value = []
+
+    await client.read_group(
+        "sale.order",
+        domain=[],
+        fields=["state", "amount_total:sum"],  # 'state' is a group field, not an aggregate
+        groupby=["state"],
+        orderby="amount_total:sum desc",
+    )
+
+    method = client._execute_kw.await_args.args[1]
+    kwargs = client._execute_kw.await_args.args[3]
+    assert method == "formatted_read_group"
+    # bare group-field names are dropped; only aggregate specs (+ __count) remain
+    assert kwargs["aggregates"] == ["amount_total:sum", "__count"]
+    assert kwargs["groupby"] == ["state"]
+    assert kwargs["order"] == "amount_total:sum desc"  # 'order', not 'orderby'
+    assert "lazy" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_read_group_formatted_always_requests_count(client):
+    """Count-only grouping must still request __count (formatted omits it otherwise)."""
+    client._use_formatted_read_group = AsyncMock(return_value=True)
+    client._execute_kw.return_value = []
+
+    await client.read_group("res.partner", domain=[], fields=[], groupby=["country_id"])
+
+    kwargs = client._execute_kw.await_args.args[3]
+    assert kwargs["aggregates"] == ["__count"]
+
+
+@pytest.mark.asyncio
+async def test_use_formatted_read_group_true_for_json2():
+    """A JSON-2 transport implies Odoo 19+, so formatted_read_group is used."""
+    settings = Settings(
+        _env_file=None,
+        odoo_url="https://test.odoo.com",
+        odoo_database="test_db",
+        odoo_username="test_user",
+        odoo_password="test_password",
+        odoo_api_key="KEY",  # -> json2
+    )
+    client = OdooClient(settings)
+    assert client.transport_name == "json2"
+    assert await client._use_formatted_read_group() is True
+
+
 def test_settings_validation():
     """Test that settings are properly validated."""
     settings = Settings(

@@ -69,6 +69,7 @@ class OdooClient:
         self.max_limit = settings.max_limit
 
         self._transport = create_transport(settings)
+        self._server_serie: Optional[str] = None  # cached lazily for version checks
 
     @property
     def transport_name(self) -> str:
@@ -186,6 +187,27 @@ class OdooClient:
         except Exception as e:
             raise OdooError(f"Failed to count records in {model}: {e}")
 
+    async def _use_formatted_read_group(self) -> bool:
+        """Whether to use ``formatted_read_group`` (Odoo 18+) over ``read_group``.
+
+        ``read_group`` is deprecated in Odoo 19 in favour of
+        ``formatted_read_group``. JSON-2 only exists on Odoo 19+, so an active
+        JSON-2 transport is a definitive signal; on XML-RPC we probe the serie.
+        """
+        if self._transport.name == "json2":
+            return True
+
+        if self._server_serie is None:
+            try:
+                info = await self._transport.version()
+                self._server_serie = info.get("server_serie") or ""
+            except Exception:  # noqa: BLE001 - fall back to legacy read_group
+                self._server_serie = ""
+        try:
+            return int(str(self._server_serie).split(".")[0]) >= 18
+        except (ValueError, IndexError):
+            return False
+
     async def read_group(
         self,
         model: str,
@@ -200,22 +222,28 @@ class OdooClient:
         """
         Group records and aggregate field values (SQL GROUP BY equivalent).
 
+        On Odoo 18+ this uses ``formatted_read_group`` (``read_group`` is
+        deprecated in 19); on older instances it falls back to ``read_group``.
+
         Args:
-            fields: Fields to aggregate, e.g. ['amount_total:sum', 'partner_id']
+            fields: Aggregate specs, e.g. ['amount_total:sum']. Plain group-field
+                names are ignored for the aggregate list (they belong in groupby).
             groupby: Fields to group by, supports date granularity: 'date:month'
-            lazy: If True, only groups by first field; remaining go to __context
+            lazy: Legacy ``read_group`` only; ignored by ``formatted_read_group``.
 
         Returns:
-            List of group dicts, each with __count and aggregated values
+            List of group dicts, each with __count and aggregated values.
         """
         await self._ensure_authenticated()
 
-        if domain is None:
-            domain = []
-        if fields is None:
-            fields = []
-        if groupby is None:
-            groupby = []
+        domain = domain or []
+        fields = fields or []
+        groupby = groupby or []
+
+        if await self._use_formatted_read_group():
+            return await self._formatted_read_group(
+                model, domain, fields, groupby, offset, limit, orderby
+            )
 
         try:
             kwargs: Dict[str, Any] = {
@@ -229,11 +257,47 @@ class OdooClient:
             if orderby:
                 kwargs["orderby"] = orderby
 
-            result = await self._execute_kw(model, "read_group", [domain], kwargs)
-            return result
+            return await self._execute_kw(model, "read_group", [domain], kwargs)
 
         except Exception as e:
             raise OdooError(f"Failed to read_group on {model}: {e}")
+
+    async def _formatted_read_group(
+        self,
+        model: str,
+        domain: List[Any],
+        fields: List[str],
+        groupby: List[str],
+        offset: int,
+        limit: Optional[int],
+        orderby: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """Odoo 18+ ``formatted_read_group``: groupby and aggregates are separate,
+        there is no ``lazy``, and ordering uses ``order`` (not ``orderby``)."""
+        # Only 'field:agg' specs (and __count) are valid aggregates; bare group
+        # field names must not be sent as aggregates or the server errors.
+        aggregates = [f for f in fields if ":" in f or f.startswith("__")]
+        # formatted_read_group only returns __count when it is requested, unlike
+        # legacy read_group which always included it — so ask for it explicitly.
+        if "__count" not in aggregates:
+            aggregates.append("__count")
+
+        try:
+            kwargs: Dict[str, Any] = {
+                "domain": domain,
+                "groupby": groupby,
+                "aggregates": aggregates,
+                "offset": offset,
+            }
+            if limit is not None:
+                kwargs["limit"] = limit
+            if orderby:
+                kwargs["order"] = orderby
+
+            return await self._execute_kw(model, "formatted_read_group", [], kwargs)
+
+        except Exception as e:
+            raise OdooError(f"Failed to formatted_read_group on {model}: {e}")
 
     async def get_default_values(
         self,
