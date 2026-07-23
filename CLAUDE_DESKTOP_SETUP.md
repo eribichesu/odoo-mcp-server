@@ -31,9 +31,9 @@ Add just the "odoo" section to your existing "mcpServers" object:
     },
     "odoo": {
       "command": "python",
-      "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
+      "args": ["/path/to/odoo.mcp/src/odoo_mcp/server.py"],
       "env": {
-        "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
+        "PYTHONPATH": "/path/to/odoo.mcp/src"
       }
     }
   }
@@ -62,7 +62,7 @@ Once Claude Desktop restarts, you should see the Odoo MCP server available. You 
 
 1. **Python Environment**: The configuration assumes your virtual environment Python is accessible as `python`. If not, you may need to use the full path:
    ```json
-   "command": "/Users/edoardo.ribichesu/vscode/odoo.mcp/.venv/bin/python"
+   "command": "/path/to/odoo.mcp/.venv/bin/python"
    ```
 
 2. **Environment Variables**: Your `.env` file must be in the project root for the server to find your Odoo credentials.
@@ -84,7 +84,7 @@ If the connection fails:
 
 1. Check that the Python path is correct
 2. Verify your `.env` file is properly configured
-3. Test the server manually: `cd /Users/edoardo.ribichesu/vscode/odoo.mcp && .venv/bin/activate && python src/odoo_mcp/server.py`
+3. Test the server manually: `cd /path/to/odoo.mcp && .venv/bin/activate && python src/odoo_mcp/server.py`
 4. Check Claude Desktop logs for error messages
 
 ---

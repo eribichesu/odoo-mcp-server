@@ -27,9 +27,9 @@ Add this to your Claude Desktop MCP configuration:
   "mcpServers": {
     "odoo": {
       "command": "python",
-      "args": ["/Users/edoardo.ribichesu/vscode/odoo.mcp/src/odoo_mcp/server.py"],
+      "args": ["/path/to/odoo.mcp/src/odoo_mcp/server.py"],
       "env": {
-        "PYTHONPATH": "/Users/edoardo.ribichesu/vscode/odoo.mcp/src"
+        "PYTHONPATH": "/path/to/odoo.mcp/src"
       }
     }
   }
@@ -42,7 +42,7 @@ The server follows the standard MCP protocol and can be used with any MCP-compat
 
 **Server Command:**
 ```bash
-cd /Users/edoardo.ribichesu/vscode/odoo.mcp
+cd /path/to/odoo.mcp
 . .venv/bin/activate
 python src/odoo_mcp/server.py
 ```
