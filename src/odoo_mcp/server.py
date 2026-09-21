@@ -160,6 +160,61 @@ async def search_odoo_records(
 
 @app.tool(
     annotations=ToolAnnotations(
+        title="Search Odoo Records (two-step)", readOnlyHint=True
+    )
+)
+async def search_odoo_records_two_step(
+    model: str,
+    domain: Optional[Union[str, List[Any]]] = None,
+    fields: Optional[Union[str, List[str]]] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    order: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Fallback variant of search_odoo_records that issues a separate search then read
+    instead of one search_read call.
+
+    Use search_odoo_records instead — it returns the same data in one round-trip.
+    Reach for this one only when search_odoo_records fails or returns unexpected
+    results on a model that overrides search_read (a handful of reporting and
+    mail-derived models do), since search and read go through different code paths.
+
+    Args:
+        model: Odoo model technical name (e.g., 'res.partner', 'sale.order')
+        domain: Search filter as a list of triples (e.g. [["customer_rank",">",0]]) or a JSON string. Use [] or omit for all records.
+        fields: Field names as a list (e.g. ["name","email"]) or a comma-separated string. Omit for all fields.
+        limit: Max records to return (default 100, max 1000)
+        offset: Records to skip for pagination (default 0)
+        order: Sort order, e.g. 'name ASC' or 'create_date DESC'
+
+    Returns:
+        JSON with 'model', 'count', and 'records' list
+    """
+    try:
+        client = await get_odoo_client()
+        parsed_domain = _parse_domain(domain)
+        parsed_fields = _parse_fields(fields)
+
+        records = await client.search_records(
+            model=model,
+            domain=parsed_domain,
+            fields=parsed_fields,
+            limit=limit,
+            offset=offset,
+            order=order,
+        )
+
+        return {"model": model, "count": len(records), "records": records}
+
+    except OdooError as e:
+        return {"error": f"Odoo error: {e}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}
+
+
+@app.tool(
+    annotations=ToolAnnotations(
         title="Create Odoo Record",
         readOnlyHint=False,
         destructiveHint=False,
@@ -562,7 +617,9 @@ async def get_odoo_external_id(
         record_ids: List of record IDs as JSON array, e.g. '[1, 2, 3]'
 
     Returns:
-        JSON with 'model' and 'external_ids' dict of {record_id: 'module.xml_id'}
+        JSON with 'model' and 'external_ids': a list of {res_id, module, name}
+        dicts. The full external ID is 'module.name'. Records without an
+        external ID are simply absent from the list.
     """
     try:
         client = await get_odoo_client()
@@ -607,6 +664,110 @@ async def export_odoo_data(
         result = await client.export_data(model, parsed_ids, parsed_fields)
 
         return {"model": model, "fields": parsed_fields, "rows": result.get("datas", [])}
+
+    except OdooError as e:
+        return {"error": f"Odoo error: {e}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}
+
+
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Load Odoo Data",
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=False,
+    )
+)
+async def load_odoo_data(
+    model: str,
+    fields: Union[str, List[str]],
+    data: Union[str, List[Any]],
+) -> Dict[str, Any]:
+    """
+    Bulk-import records — the API behind Odoo's UI importer, and the inverse of
+    export_odoo_data. Loads many rows in one call and resolves relations by name
+    or external ID, so you do not have to look up every many2one first.
+    Prefer this over repeated create_odoo_record for more than a handful of rows.
+
+    Column headers accept the importer's path syntax:
+      - 'id'              external ID; re-loading the same value UPDATES that
+                          record instead of creating a duplicate (upsert)
+      - 'name'            a plain field value
+      - 'country_id/id'   resolve a many2one by the target's external ID
+      - 'country_id/.id'  resolve a many2one by the target's database ID
+      - 'country_id/name' resolve a many2one by the target's display name
+      - 'tag_ids/id'      many2many: comma-separate external IDs in the value
+
+    Values are strings, exactly as they would appear in a CSV
+    (e.g. '2026-01-31', 'True', '12.50'). Rows must be ordered to match `fields`.
+
+    The whole load is one transaction: if any row errors, NOTHING is written.
+
+    Args:
+        model: Odoo model technical name (e.g., 'res.partner', 'product.template')
+        fields: Column headers as a list or comma-separated string, e.g. 'id,name,country_id/id'
+        data: Rows as a JSON list of lists — one inner list per record, values in the
+              same order as `fields`, e.g. '[["mymod.p1", "ACME", "base.it"]]'
+
+    Returns:
+        JSON with 'ids' (created/updated record IDs), 'messages' (per-row errors and
+        warnings — always check these, an empty 'ids' means the load was rejected),
+        and 'success'
+    """
+    try:
+        client = await get_odoo_client()
+        parsed_fields = _parse_fields(fields)
+        if not parsed_fields:
+            return {"error": "fields is required: give the column headers for each value in a row"}
+        parsed_data = _parse_json(data, "data")
+        if not isinstance(parsed_data, list):
+            return {"error": f"data must be a list of rows, got {type(parsed_data).__name__}"}
+
+        # An unknown column header makes Odoo 19 blow up with an opaque HTTP 500
+        # ("Pending savepoints not released") that hides the real cause and gets
+        # retried as if it were transient. Catch the typo here instead.
+        known = await client.get_model_fields(model, attributes=["type"])
+        unknown = sorted(
+            {f for f in parsed_fields if f.split("/")[0] not in known and f != "id"}
+        )
+        if unknown:
+            return {
+                "error": (
+                    f"Unknown column(s) for {model}: {', '.join(unknown)}. "
+                    f"Headers must be 'id' or a field name, optionally with an "
+                    f"importer path ('country_id/id', 'country_id/name'). "
+                    f"Use get_odoo_model_fields to list valid fields."
+                )
+            }
+
+        widths = {len(row) for row in parsed_data if isinstance(row, list)}
+        if len(parsed_data) != sum(1 for r in parsed_data if isinstance(r, list)):
+            return {"error": "data must be a list of lists — one inner list per record"}
+        if widths and widths != {len(parsed_fields)}:
+            return {
+                "error": (
+                    f"Each row must have exactly {len(parsed_fields)} values to match "
+                    f"fields {parsed_fields}; got row widths {sorted(widths)}"
+                )
+            }
+
+        result = await client.load_data(model, parsed_fields, parsed_data)
+
+        ids = result.get("ids") or []
+        messages = result.get("messages") or []
+        success = bool(ids) and not any(
+            isinstance(m, dict) and m.get("type") == "error" for m in messages
+        )
+
+        return {
+            "model": model,
+            "fields": parsed_fields,
+            "ids": ids,
+            "loaded": len(ids),
+            "messages": messages,
+            "success": success,
+        }
 
     except OdooError as e:
         return {"error": f"Odoo error: {e}"}

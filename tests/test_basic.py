@@ -168,6 +168,38 @@ async def test_use_formatted_read_group_true_for_json2():
     assert await client._use_formatted_read_group() is True
 
 
+@pytest.mark.parametrize(
+    "serie,expected",
+    [
+        ("saas~19.3", True),   # Odoo Online serie — must not fail to parse
+        ("saas~18.2", True),
+        ("19.0", True),
+        ("18.0", True),
+        ("17.0", False),
+        ("saas~16.4", False),
+        ("", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_use_formatted_read_group_parses_serie_over_xmlrpc(serie, expected):
+    """Over XML-RPC the serie decides, and SaaS series ('saas~19.3') must parse.
+
+    A parse failure here silently routes grouping to read_group, which no longer
+    exists on Odoo 19.
+    """
+    settings = Settings(
+        _env_file=None,
+        odoo_url="https://test.odoo.com",
+        odoo_database="test_db",
+        odoo_username="test_user",
+        odoo_password="test_password",
+        odoo_transport="xmlrpc",
+    )
+    client = OdooClient(settings)
+    client._transport.version = AsyncMock(return_value={"server_serie": serie})
+    assert await client._use_formatted_read_group() is expected
+
+
 def test_settings_validation():
     """Test that settings are properly validated."""
     settings = Settings(
@@ -197,3 +229,104 @@ def test_settings_from_env(monkeypatch):
     assert settings.odoo_database == "env_db"
     assert settings.odoo_username == "env_user"
     assert settings.odoo_password == "env_password"
+
+# --- MCP tool layer: load_odoo_data / search_odoo_records_two_step -----------
+
+
+@pytest.fixture
+def server(monkeypatch):
+    """The server module with get_odoo_client() patched to a mocked OdooClient."""
+    import odoo_mcp.server as srv
+
+    fake = AsyncMock()
+    monkeypatch.setattr(srv, "get_odoo_client", AsyncMock(return_value=fake))
+    return srv, fake
+
+
+@pytest.mark.asyncio
+async def test_load_tool_passes_fields_and_rows(server):
+    """load_odoo_data forwards parsed headers and rows, and reports the ids."""
+    srv, fake = server
+    fake.get_model_fields.return_value = {"name": {"type": "char"}}
+    fake.load_data.return_value = {"ids": [1, 2], "messages": []}
+
+    result = await srv.load_odoo_data("res.partner", "name", '[["A"],["B"]]')
+
+    fake.load_data.assert_awaited_once_with("res.partner", ["name"], [["A"], ["B"]])
+    assert result["ids"] == [1, 2]
+    assert result["loaded"] == 2
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_load_tool_rejects_unknown_column(server):
+    """A typo'd header is caught locally — Odoo 19 turns it into an opaque 500."""
+    srv, fake = server
+    fake.get_model_fields.return_value = {"name": {"type": "char"}}
+
+    result = await srv.load_odoo_data("res.partner", "name,nope", '[["A","x"]]')
+
+    assert "nope" in result["error"]
+    fake.load_data.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_load_tool_accepts_importer_paths(server):
+    """'country_id/id' is valid: only the part before '/' names a field."""
+    srv, fake = server
+    fake.get_model_fields.return_value = {"name": {}, "country_id": {}}
+    fake.load_data.return_value = {"ids": [5], "messages": []}
+
+    result = await srv.load_odoo_data("res.partner", "id,name,country_id/id", '[["m.x","A","base.it"]]')
+
+    assert result["success"] is True
+    assert fake.load_data.await_args.args[1] == ["id", "name", "country_id/id"]
+
+
+@pytest.mark.asyncio
+async def test_load_tool_rejects_row_width_mismatch(server):
+    """Row width must match the header count, or values land in the wrong column."""
+    srv, fake = server
+    fake.get_model_fields.return_value = {"name": {}, "color": {}}
+
+    result = await srv.load_odoo_data("res.partner", "name,color", '[["A"]]')
+
+    assert "exactly 2 values" in result["error"]
+    fake.load_data.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_load_tool_reports_error_messages_as_failure(server):
+    """An error-level message means the load was rejected, even if ids came back."""
+    srv, fake = server
+    fake.get_model_fields.return_value = {"name": {}}
+    fake.load_data.return_value = {
+        "ids": [1],
+        "messages": [{"type": "error", "message": "bad value"}],
+    }
+
+    result = await srv.load_odoo_data("res.partner", "name", '[["A"]]')
+
+    assert result["success"] is False
+    assert result["messages"][0]["message"] == "bad value"
+
+
+@pytest.mark.asyncio
+async def test_two_step_tool_uses_search_records(server):
+    """search_odoo_records_two_step routes to the search+read client method."""
+    srv, fake = server
+    fake.search_records.return_value = [{"id": 1, "name": "A"}]
+
+    result = await srv.search_odoo_records_two_step(
+        "res.partner", '[["is_company","=",true]]', "name", limit=5, offset=2, order="name ASC"
+    )
+
+    fake.search_records.assert_awaited_once_with(
+        model="res.partner",
+        domain=[["is_company", "=", True]],
+        fields=["name"],
+        limit=5,
+        offset=2,
+        order="name ASC",
+    )
+    assert result["count"] == 1

@@ -8,6 +8,7 @@ the transport translates it to the wire format.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from .errors import (
@@ -203,10 +204,12 @@ class OdooClient:
                 self._server_serie = info.get("server_serie") or ""
             except Exception:  # noqa: BLE001 - fall back to legacy read_group
                 self._server_serie = ""
-        try:
-            return int(str(self._server_serie).split(".")[0]) >= 18
-        except (ValueError, IndexError):
-            return False
+        # The serie is plain on-prem ("18.0", "19.0") but SaaS-flavoured online
+        # ("saas~19.3"), so pull the major number out instead of parsing the
+        # leading dot-segment — int("saas~19") would raise and wrongly fall back
+        # to read_group, which no longer exists on 19.
+        match = re.search(r"(\d+)", str(self._server_serie))
+        return int(match.group(1)) >= 18 if match else False
 
     async def read_group(
         self,
