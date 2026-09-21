@@ -168,6 +168,38 @@ async def test_use_formatted_read_group_true_for_json2():
     assert await client._use_formatted_read_group() is True
 
 
+@pytest.mark.parametrize(
+    "serie,expected",
+    [
+        ("saas~19.3", True),   # Odoo Online serie — must not fail to parse
+        ("saas~18.2", True),
+        ("19.0", True),
+        ("18.0", True),
+        ("17.0", False),
+        ("saas~16.4", False),
+        ("", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_use_formatted_read_group_parses_serie_over_xmlrpc(serie, expected):
+    """Over XML-RPC the serie decides, and SaaS series ('saas~19.3') must parse.
+
+    A parse failure here silently routes grouping to read_group, which no longer
+    exists on Odoo 19.
+    """
+    settings = Settings(
+        _env_file=None,
+        odoo_url="https://test.odoo.com",
+        odoo_database="test_db",
+        odoo_username="test_user",
+        odoo_password="test_password",
+        odoo_transport="xmlrpc",
+    )
+    client = OdooClient(settings)
+    client._transport.version = AsyncMock(return_value={"server_serie": serie})
+    assert await client._use_formatted_read_group() is expected
+
+
 def test_settings_validation():
     """Test that settings are properly validated."""
     settings = Settings(

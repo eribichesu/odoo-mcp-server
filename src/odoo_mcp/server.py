@@ -562,7 +562,9 @@ async def get_odoo_external_id(
         record_ids: List of record IDs as JSON array, e.g. '[1, 2, 3]'
 
     Returns:
-        JSON with 'model' and 'external_ids' dict of {record_id: 'module.xml_id'}
+        JSON with 'model' and 'external_ids': a list of {res_id, module, name}
+        dicts. The full external ID is 'module.name'. Records without an
+        external ID are simply absent from the list.
     """
     try:
         client = await get_odoo_client()

@@ -4,8 +4,10 @@ Transport layer for talking to Odoo's external API.
 Two transports are provided behind a common interface:
 
 * ``XmlRpcTransport`` — the legacy ``/xmlrpc/2`` endpoints. Deprecated in
-  Odoo 19 (removed on Odoo Online in 19.1 and on-prem in 20) but still the only
-  option for Odoo <= 18.
+  Odoo 19 and slated for removal, but still served on saas~19.3 (verified
+  2026-09-21) and the only option for Odoo <= 18. Note that ORM methods dropped
+  in 19 (e.g. ``read_group``) are gone over XML-RPC too — the transport is
+  legacy, the ORM behind it is not.
 * ``Json2Transport`` — the modern ``/json/2`` endpoint introduced in Odoo 19.
   Uses API-key bearer auth, named parameters, and real HTTP status codes.
 
