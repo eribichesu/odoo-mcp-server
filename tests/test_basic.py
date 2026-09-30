@@ -359,14 +359,12 @@ async def test_list_attachments_defaults_to_bills(server):
 @pytest.mark.asyncio
 async def test_download_attachment_writes_file(server, download_dir):
     """The decoded content is saved under the download dir, id-prefixed."""
-    import base64
-
     srv, fake = server
-    fake.read_attachment.side_effect = [
-        {"name": "bill.pdf", "type": "binary", "file_size": 5,
-         "mimetype": "application/pdf", "res_model": "account.move", "res_id": 42},
-        {"datas": base64.b64encode(b"%PDF-").decode()},
-    ]
+    fake.read_attachment.return_value = {
+        "name": "bill.pdf", "type": "binary", "file_size": 5,
+        "mimetype": "application/pdf", "res_model": "account.move", "res_id": 42,
+    }
+    fake.read_attachment_content.return_value = b"%PDF-"
 
     result = await srv.download_odoo_attachment(7)
 
@@ -378,13 +376,9 @@ async def test_download_attachment_writes_file(server, download_dir):
 @pytest.mark.asyncio
 async def test_download_attachment_sanitizes_name(server, download_dir):
     """A name with path components cannot escape the download dir."""
-    import base64
-
     srv, fake = server
-    fake.read_attachment.side_effect = [
-        {"name": "../../etc/passwd", "type": "binary", "file_size": 1},
-        {"datas": base64.b64encode(b"x").decode()},
-    ]
+    fake.read_attachment.return_value = {"name": "../../etc/passwd", "type": "binary", "file_size": 1}
+    fake.read_attachment_content.return_value = b"x"
 
     result = await srv.download_odoo_attachment(3)
 
@@ -401,7 +395,7 @@ async def test_download_attachment_refuses_oversized(server, download_dir, monke
     result = await srv.download_odoo_attachment(9)
 
     assert "limit" in result["error"]
-    fake.read_attachment.assert_awaited_once()
+    fake.read_attachment_content.assert_not_awaited()
     assert not any(download_dir.iterdir())
 
 
@@ -415,6 +409,7 @@ async def test_download_attachment_url_type_returns_link(server, download_dir):
 
     assert result["url"] == "https://x"
     assert "path" not in result
+    fake.read_attachment_content.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -425,3 +420,76 @@ async def test_download_attachment_not_found(server, download_dir):
     result = await srv.download_odoo_attachment(404)
 
     assert "not found" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_refuses_size_mismatch(server, download_dir):
+    """A short read must not be saved as if it were the whole file."""
+    srv, fake = server
+    fake.read_attachment.return_value = {"name": "bill.pdf", "type": "binary", "file_size": 10}
+    fake.read_attachment_content.return_value = b"short"
+
+    result = await srv.download_odoo_attachment(7)
+
+    assert "truncated" in result["error"]
+    assert not any(download_dir.iterdir())
+
+
+# --- OdooClient.read_attachment_content -------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_attachment_content_prefers_raw(client):
+    """Odoo 19 has no 'datas' field, so 'raw' must be read when available."""
+    import base64
+
+    client._execute_kw.side_effect = [
+        {"raw": {"type": "binary"}, "db_datas": {"type": "binary"}},  # fields_get
+        [{"id": 7, "raw": base64.b64encode(b"%PDF-1.7").decode()}],
+    ]
+
+    content = await client.read_attachment_content(7)
+
+    assert content == b"%PDF-1.7"
+    assert client._execute_kw.await_args.args[3]["fields"] == ["raw"]
+
+
+@pytest.mark.asyncio
+async def test_attachment_content_falls_back_to_datas(client):
+    """Odoo <= 13 has only 'datas'."""
+    import base64
+
+    client._execute_kw.side_effect = [
+        {"datas": {"type": "binary"}},
+        [{"id": 7, "datas": base64.b64encode(b"abc").decode()}],
+    ]
+
+    assert await client.read_attachment_content(7) == b"abc"
+    assert client._execute_kw.await_args.args[3]["fields"] == ["datas"]
+
+
+@pytest.mark.asyncio
+async def test_attachment_content_accepts_xmlrpc_binary(client):
+    """XML-RPC can return an xmlrpc.client.Binary holding undecoded bytes."""
+    import xmlrpc.client
+
+    client._execute_kw.side_effect = [
+        {"raw": {"type": "binary"}},
+        [{"id": 7, "raw": xmlrpc.client.Binary(b"\x00\x01")}],
+    ]
+
+    assert await client.read_attachment_content(7) == b"\x00\x01"
+
+
+@pytest.mark.asyncio
+async def test_attachment_content_field_is_cached(client):
+    """fields_get runs once per client, not once per download."""
+    client._execute_kw.side_effect = [
+        {"raw": {"type": "binary"}},
+        [{"id": 1, "raw": False}],
+        [{"id": 2, "raw": False}],
+    ]
+
+    assert await client.read_attachment_content(1) is None
+    assert await client.read_attachment_content(2) is None
+    assert client._execute_kw.await_count == 3

@@ -3,7 +3,6 @@ Main MCP server implementation for Odoo integration.
 """
 
 import asyncio
-import base64
 import json
 import logging
 import sys
@@ -898,12 +897,15 @@ async def download_odoo_attachment(attachment_id: int) -> Dict[str, Any]:
                 f"{settings.max_attachment_bytes}-byte limit (MAX_ATTACHMENT_BYTES)."
             }
 
-        content = await client.read_attachment(attachment_id, ["datas"])
-        datas = content.get("datas") if content else None
-        if not datas:
+        raw = await client.read_attachment_content(attachment_id)
+        if not raw:
             return {"error": f"Attachment {attachment_id} has no stored content"}
+        if size and len(raw) != size:
+            return {
+                "error": f"Attachment {attachment_id} content is {len(raw)} bytes "
+                f"but Odoo reports file_size {size}; not saving a truncated file."
+            }
 
-        raw = base64.b64decode(datas)
         download_dir = Path(settings.download_dir).expanduser()
         download_dir.mkdir(parents=True, exist_ok=True)
         # Prefix with the id: bills often carry several files with the same name.

@@ -7,8 +7,10 @@ it always speaks the ``execute_kw(model, method, args, kwargs)`` convention and
 the transport translates it to the wire format.
 """
 
+import base64
 import logging
 import re
+import xmlrpc.client
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from .errors import (
@@ -83,6 +85,7 @@ class OdooClient:
 
         self._transport = create_transport(settings)
         self._server_serie: Optional[str] = None  # cached lazily for version checks
+        self._attachment_field: Optional[str] = None  # 'raw' or 'datas', cached lazily
 
     @property
     def transport_name(self) -> str:
@@ -500,8 +503,8 @@ class OdooClient:
         fields: List[str],
     ) -> Optional[Dict[str, Any]]:
         """
-        Read the given fields of one ir.attachment. Pass 'datas' to get the
-        base64-encoded content.
+        Read the given metadata fields of one ir.attachment. Use
+        read_attachment_content for the file itself.
 
         Returns:
             The attachment dict, or None if it does not exist / is not readable
@@ -519,6 +522,52 @@ class OdooClient:
 
         except Exception as e:
             raise OdooError(f"Failed to read attachment {attachment_id}: {e}")
+
+    async def _attachment_content_field(self) -> str:
+        """Which ir.attachment field carries the file content on this server.
+
+        Odoo 14+ exposes 'raw'; Odoo 19 removed the old base64 'datas' field
+        entirely (reading it raises "Invalid field"), while Odoo <= 13 only
+        has 'datas'. Resolved once via fields_get and cached.
+        """
+        if self._attachment_field is None:
+            fields = await self._execute_kw(
+                "ir.attachment", "fields_get", [], {"attributes": ["type"]}
+            )
+            self._attachment_field = "raw" if "raw" in fields else "datas"
+        return self._attachment_field
+
+    async def read_attachment_content(self, attachment_id: int) -> Optional[bytes]:
+        """
+        Read the binary content of one ir.attachment.
+
+        Both transports serialize binary fields as base64 strings; XML-RPC may
+        instead hand back an xmlrpc.client.Binary holding the raw bytes.
+
+        Returns:
+            The decoded file bytes, or None if the attachment has no content
+        """
+        await self._ensure_authenticated()
+
+        try:
+            field = await self._attachment_content_field()
+            result = await self._execute_kw(
+                "ir.attachment",
+                "search_read",
+                [[["id", "=", attachment_id]]],
+                {"fields": [field], "limit": 1},
+            )
+            value = result[0].get(field) if result else None
+            if not value:
+                return None
+            if isinstance(value, xmlrpc.client.Binary):
+                return value.data
+            return base64.b64decode(value)
+
+        except Exception as e:
+            raise OdooError(
+                f"Failed to read content of attachment {attachment_id}: {e}"
+            )
 
     async def list_models(
         self,
