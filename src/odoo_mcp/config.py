@@ -103,6 +103,16 @@ class Settings(BaseSettings):
         description="Maximum limit for search operations",
     )
 
+    # Attachment downloads
+    download_dir: Path = Field(
+        default=Path.home() / "Downloads" / "odoo-mcp",
+        description="Local directory where downloaded attachments are saved",
+    )
+    max_attachment_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        description="Largest attachment (in bytes) the download tool will fetch",
+    )
+
 
 # Global settings instance (lazy-loaded)
 _settings: Optional[Settings] = None

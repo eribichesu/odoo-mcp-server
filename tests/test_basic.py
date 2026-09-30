@@ -330,3 +330,98 @@ async def test_two_step_tool_uses_search_records(server):
         order="name ASC",
     )
     assert result["count"] == 1
+
+
+# --- MCP tool layer: attachments --------------------------------------------
+
+
+@pytest.fixture
+def download_dir(server, tmp_path, monkeypatch):
+    """Point downloads at a temp dir so tests never touch ~/Downloads."""
+    srv, _ = server
+    monkeypatch.setattr(srv.settings, "download_dir", tmp_path)
+    return tmp_path
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_defaults_to_bills(server):
+    """list_odoo_attachments targets account.move unless told otherwise."""
+    srv, fake = server
+    fake.list_attachments.return_value = [{"id": 7, "name": "bill.pdf"}]
+
+    result = await srv.list_odoo_attachments(42)
+
+    fake.list_attachments.assert_awaited_once_with("account.move", 42)
+    assert result["count"] == 1
+    assert result["attachments"][0]["id"] == 7
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_writes_file(server, download_dir):
+    """The decoded content is saved under the download dir, id-prefixed."""
+    import base64
+
+    srv, fake = server
+    fake.read_attachment.side_effect = [
+        {"name": "bill.pdf", "type": "binary", "file_size": 5,
+         "mimetype": "application/pdf", "res_model": "account.move", "res_id": 42},
+        {"datas": base64.b64encode(b"%PDF-").decode()},
+    ]
+
+    result = await srv.download_odoo_attachment(7)
+
+    assert result["path"] == str(download_dir / "7_bill.pdf")
+    assert (download_dir / "7_bill.pdf").read_bytes() == b"%PDF-"
+    assert result["size"] == 5
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_sanitizes_name(server, download_dir):
+    """A name with path components cannot escape the download dir."""
+    import base64
+
+    srv, fake = server
+    fake.read_attachment.side_effect = [
+        {"name": "../../etc/passwd", "type": "binary", "file_size": 1},
+        {"datas": base64.b64encode(b"x").decode()},
+    ]
+
+    result = await srv.download_odoo_attachment(3)
+
+    assert result["path"] == str(download_dir / "3_passwd")
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_refuses_oversized(server, download_dir, monkeypatch):
+    """Oversized files are refused before their content is requested."""
+    srv, fake = server
+    monkeypatch.setattr(srv.settings, "max_attachment_bytes", 10)
+    fake.read_attachment.return_value = {"name": "big.pdf", "type": "binary", "file_size": 11}
+
+    result = await srv.download_odoo_attachment(9)
+
+    assert "limit" in result["error"]
+    fake.read_attachment.assert_awaited_once()
+    assert not any(download_dir.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_url_type_returns_link(server, download_dir):
+    """URL attachments have no stored file, so the link is returned instead."""
+    srv, fake = server
+    fake.read_attachment.return_value = {"name": "Portal", "type": "url", "url": "https://x"}
+
+    result = await srv.download_odoo_attachment(4)
+
+    assert result["url"] == "https://x"
+    assert "path" not in result
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_not_found(server, download_dir):
+    srv, fake = server
+    fake.read_attachment.return_value = None
+
+    result = await srv.download_odoo_attachment(404)
+
+    assert "not found" in result["error"]

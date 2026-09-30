@@ -61,6 +61,8 @@ SERVER_NAME=odoo-mcp
 - `ODOO_API_KEY`: Odoo API key — **required for the JSON-2 transport** and for any account with two-factor authentication enabled
 - `ODOO_TRANSPORT`: `auto` (default — JSON-2 when an API key is set, else XML-RPC), `json2`, or `xmlrpc`
 - `SERVER_NAME`: MCP server name (default: "odoo-mcp")
+- `DOWNLOAD_DIR`: Where `download_odoo_attachment` saves files (default: `~/Downloads/odoo-mcp`)
+- `MAX_ATTACHMENT_BYTES`: Largest attachment the download tool will fetch (default: 26214400, i.e. 25 MB)
 
 ### Choosing a transport
 
@@ -198,6 +200,14 @@ Execute a custom method on an Odoo model.
   "args": [[1, 2, 3]]
 }
 ```
+
+#### 7. List / Download Attachments
+Fetch files attached to a record — e.g. the PDF of a vendor bill.
+
+- `list_odoo_attachments(record_id, model="account.move")` returns attachment metadata (id, name, mimetype, size) without the content.
+- `download_odoo_attachment(attachment_id)` saves the file to `DOWNLOAD_DIR` as `<id>_<name>` and returns its local `path`. Files over `MAX_ATTACHMENT_BYTES` are refused; URL-type attachments return their link.
+
+The server must run on the same machine as the client for the returned path to be readable (the default stdio setup).
 
 ### Resources
 

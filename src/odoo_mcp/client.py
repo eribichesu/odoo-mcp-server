@@ -25,6 +25,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ir.attachment fields that describe a file without pulling its content.
+ATTACHMENT_META_FIELDS = [
+    "name",
+    "mimetype",
+    "file_size",
+    "type",
+    "url",
+    "res_model",
+    "res_id",
+    "create_date",
+]
+
 
 def _single_id(result: Any) -> Any:
     """Normalize a create/copy result to a single id.
@@ -454,6 +466,59 @@ class OdooClient:
 
         except Exception as e:
             raise OdooError(f"Failed to load data into {model}: {e}")
+
+    async def list_attachments(
+        self,
+        model: str,
+        record_id: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        List the ir.attachment records linked to a record (chatter and
+        main-document attachments alike). Never reads the binary content.
+
+        Returns:
+            List of attachment metadata dicts, newest first
+        """
+        await self._ensure_authenticated()
+
+        try:
+            return await self._execute_kw(
+                "ir.attachment",
+                "search_read",
+                [[["res_model", "=", model], ["res_id", "=", record_id]]],
+                {"fields": ATTACHMENT_META_FIELDS, "order": "create_date DESC"},
+            )
+
+        except Exception as e:
+            raise OdooError(
+                f"Failed to list attachments for {model} {record_id}: {e}"
+            )
+
+    async def read_attachment(
+        self,
+        attachment_id: int,
+        fields: List[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Read the given fields of one ir.attachment. Pass 'datas' to get the
+        base64-encoded content.
+
+        Returns:
+            The attachment dict, or None if it does not exist / is not readable
+        """
+        await self._ensure_authenticated()
+
+        try:
+            result = await self._execute_kw(
+                "ir.attachment",
+                "search_read",
+                [[["id", "=", attachment_id]]],
+                {"fields": fields, "limit": 1},
+            )
+            return result[0] if result else None
+
+        except Exception as e:
+            raise OdooError(f"Failed to read attachment {attachment_id}: {e}")
 
     async def list_models(
         self,

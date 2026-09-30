@@ -3,10 +3,13 @@ Main MCP server implementation for Odoo integration.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import sys
 import os
+import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 # Add the parent directory to sys.path to handle relative imports
@@ -17,11 +20,11 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 try:
-    from .client import OdooClient, OdooError
+    from .client import ATTACHMENT_META_FIELDS, OdooClient, OdooError
     from .config import get_settings
 except ImportError:
     # Fallback for direct execution
-    from odoo_mcp.client import OdooClient, OdooError
+    from odoo_mcp.client import ATTACHMENT_META_FIELDS, OdooClient, OdooError
     from odoo_mcp.config import get_settings
 
 
@@ -801,6 +804,126 @@ async def list_odoo_models(
 
     except OdooError as e:
         return {"error": f"Odoo error: {e}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}
+
+
+def _safe_filename(name: str) -> str:
+    """Strip path separators and other unsafe characters from an Odoo file
+    name so it can only ever land inside the download directory."""
+    cleaned = re.sub(r"[^\w.\- ]", "_", os.path.basename(name or "")).strip(" .")
+    return cleaned or "attachment"
+
+
+@app.tool(
+    annotations=ToolAnnotations(title="List Odoo Attachments", readOnlyHint=True)
+)
+async def list_odoo_attachments(
+    record_id: int,
+    model: str = "account.move",
+) -> Dict[str, Any]:
+    """
+    List the files attached to an Odoo record (e.g. the PDF of a vendor bill).
+    Returns metadata only — use download_odoo_attachment to fetch a file.
+
+    Args:
+        record_id: ID of the record the files are attached to (e.g. the bill ID)
+        model: Model of that record (default 'account.move' for bills/invoices)
+
+    Returns:
+        JSON with 'model', 'record_id', 'count' and 'attachments' list of
+        {id, name, mimetype, file_size, type, url, create_date}
+    """
+    try:
+        client = await get_odoo_client()
+
+        attachments = await client.list_attachments(model, record_id)
+
+        return {
+            "model": model,
+            "record_id": record_id,
+            "count": len(attachments),
+            "attachments": attachments,
+        }
+
+    except OdooError as e:
+        return {"error": f"Odoo error: {e}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}
+
+
+@app.tool(
+    annotations=ToolAnnotations(
+        title="Download Odoo Attachment",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+    )
+)
+async def download_odoo_attachment(attachment_id: int) -> Dict[str, Any]:
+    """
+    Download an Odoo attachment (ir.attachment) to the local download
+    directory and return its path. Get attachment IDs from
+    list_odoo_attachments. Read the saved file from the returned 'path'.
+
+    Args:
+        attachment_id: ID of the ir.attachment to download
+
+    Returns:
+        JSON with 'path', 'name', 'mimetype', 'size', 'res_model', 'res_id'.
+        URL-type attachments return their 'url' instead, since Odoo stores no
+        file for them.
+    """
+    try:
+        client = await get_odoo_client()
+
+        # Metadata first, so an oversized file is refused before its content
+        # is ever transferred.
+        att = await client.read_attachment(attachment_id, ATTACHMENT_META_FIELDS)
+        if att is None:
+            return {"error": f"Attachment {attachment_id} not found or not accessible"}
+
+        if att.get("type") == "url":
+            return {
+                "attachment_id": attachment_id,
+                "name": att.get("name"),
+                "url": att.get("url"),
+                "note": "Link attachment: Odoo stores no file content for it.",
+            }
+
+        size = att.get("file_size") or 0
+        if size > settings.max_attachment_bytes:
+            return {
+                "error": f"Attachment is {size} bytes, over the "
+                f"{settings.max_attachment_bytes}-byte limit (MAX_ATTACHMENT_BYTES)."
+            }
+
+        content = await client.read_attachment(attachment_id, ["datas"])
+        datas = content.get("datas") if content else None
+        if not datas:
+            return {"error": f"Attachment {attachment_id} has no stored content"}
+
+        raw = base64.b64decode(datas)
+        download_dir = Path(settings.download_dir).expanduser()
+        download_dir.mkdir(parents=True, exist_ok=True)
+        # Prefix with the id: bills often carry several files with the same name.
+        path = download_dir / f"{attachment_id}_{_safe_filename(att.get('name'))}"
+        path.write_bytes(raw)
+
+        return {
+            "attachment_id": attachment_id,
+            "path": str(path),
+            "name": att.get("name"),
+            "mimetype": att.get("mimetype"),
+            "size": len(raw),
+            "res_model": att.get("res_model"),
+            "res_id": att.get("res_id"),
+        }
+
+    except OdooError as e:
+        return {"error": f"Odoo error: {e}"}
+    except OSError as e:
+        return {"error": f"Could not save file locally: {e}"}
     except Exception as e:
         return {"error": f"Unexpected error: {e}"}
 
